@@ -730,6 +730,10 @@ const CONFIG = {
   PLAYER_BILL_TIP_RATIO: 1.0,   // 倍。判定の線の先。絵の角の先（中心から PLAYER_SPRITE_LENGTH / 2 + PLAYER_SPRITE_OFFSET.x）の何倍か。
                                 // 絵の大きさから計算するので、絵の長さを変えても判定が角の先からずれない
   PLAYER_BILL_HALF_WIDTH: 3,    // px。判定の線の太さの半分
+  // 角で貫く演出。角が先に触れた敵は、その場で止まって震え、角がぐぐっと刺さってから弾ける
+  IMPALE_ENABLED: true,         // false なら角で触れた瞬間に弾ける（今までどおり）
+  IMPALE_DELAY: 0.15,           // 秒（ゲーム内時間）。刺さってから弾けるまで。速さ690だとこの間に約100px進み、角の半分以上が敵を通り抜ける
+  IMPALE_SHAKE: 3,              // px。刺さっている間の敵の震えの大きさ
   KILL_FX_NORMAL_FRAMES: 7,     // コマ。体当たりのエフェクトのシートのコマ数（横一列）
   KILL_FX_SPIN_FRAMES: 5,       // コマ。回転のエフェクトのシートのコマ数（横一列）
   KILL_FX_SIZE: 150,            // px。エフェクト1コマを描く横幅。高さはコマの縦横比のまま
@@ -1463,7 +1467,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0 };
+    state.stats = { kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -2803,10 +2807,52 @@ function createGame() {
     return false;
   }
 
+  // 雑魚を倒す。kind は 'spin'（回転で倒した）か 'normal'（体当たり・角で倒した）。
+  // 刺さってから弾ける時も、すぐ弾ける時も、ここでまとめて速さ・ヒットストップ・エフェクトを入れる
+  function killEnemy(enemy, kind) {
+    enemy.alive = false;
+    enemy.impale = null;
+    enemy.flash = CONFIG.FLASH_DURATION;
+    if (kind === 'spin') {
+      addBonus('spinBonus', CONFIG.SPIN_BONUS_PER_HIT);
+      triggerHitstop('spin');
+      // 雑魚を倒した時は絵のエフェクトだけを出す（図形のしぶき・電撃・輪・火花は出さない）
+      spawnKillFx(enemy.pos, 'spin');
+      state.stats.spinKills++;
+    } else {
+      // 撃破ぶんを積む（回転アタックより少ない）
+      addBonus('killBonus', CONFIG.NORMAL_KILL_BONUS);
+      triggerHitstop('normal');
+      spawnKillFx(enemy.pos, 'normal');
+    }
+    state.stats.kills++;
+  }
+
+  // 角に刺さっている敵の時間を進め、ディレイが終わったら弾けさせる
+  function updateImpales(dt) {
+    for (const enemy of state.enemies) {
+      if (!enemy.alive || !enemy.impale) {
+        continue;
+      }
+      enemy.impale.timer -= dt;
+      if (enemy.impale.timer <= 0) {
+        let kind = 'normal';
+        if (enemy.impale.spin) {
+          kind = 'spin';
+        }
+        killEnemy(enemy, kind);
+      }
+    }
+  }
+
   function collideEnemies() {
     const fish = state.fish;
     for (const enemy of state.enemies) {
       if (!enemy.alive) {
+        continue;
+      }
+      if (enemy.impale) {
+        // 刺さっている間は、体が通り抜けても何も起きない（被弾も二重の撃破もしない）
         continue;
       }
       if (enemy.spawnAge < CONFIG.ROOM_SPAWN_FADE_TIME) {
@@ -2822,27 +2868,23 @@ function createGame() {
       if (billHit) {
         state.stats.billHits++;
       }
+      if (billHit && !bodyHit && CONFIG.IMPALE_ENABLED) {
+        // 角が先に触れた：その場で刺さって、ディレイの後に弾ける。回転中に刺さったら回転で倒した扱い。
+        // ドリフトのクールタイムを戻す判定は、弾ける時ではなく今（刺さった時）に数える（受付時間ぎりぎりで取りこぼさないため）
+        enemy.impale = { timer: CONFIG.IMPALE_DELAY, spin: isSpinning() };
+        state.stats.impales++;
+        onDriftDashHit();
+        continue;
+      }
       if (isSpinning()) {
         // 回転中は全方向が攻撃。倒して速度を積む
-        enemy.alive = false;
-        enemy.flash = CONFIG.FLASH_DURATION;
-        addBonus('spinBonus', CONFIG.SPIN_BONUS_PER_HIT);
-        triggerHitstop('spin');
-        // 雑魚を倒した時は絵のエフェクトだけを出す（図形のしぶき・電撃・輪・火花は出さない）
-        spawnKillFx(enemy.pos, 'spin');
-        state.stats.kills++;
-        state.stats.spinKills++;
+        killEnemy(enemy, 'spin');
         onDriftDashHit();
         continue;
       }
       if (billHit || isFrontalHit(enemy.pos)) {
-        // 正面からは倒せる。撃破ぶんを積む（回転アタックより少ない）。角が触れた時も正面として扱う
-        enemy.alive = false;
-        addBonus('killBonus', CONFIG.NORMAL_KILL_BONUS);
-        enemy.flash = CONFIG.FLASH_DURATION;
-        triggerHitstop('normal');
-        spawnKillFx(enemy.pos, 'normal');
-        state.stats.kills++;
+        // 正面からは倒せる。角が触れた時も正面として扱う
+        killEnemy(enemy, 'normal');
         onDriftDashHit();
         continue;
       }
@@ -2992,6 +3034,8 @@ function createGame() {
       collideEnemies();
       collideBoss();
     }
+    // 角に刺さっている敵を、ディレイが終わったら弾けさせる
+    updateImpales(dt);
 
     // 泡と水流線。被弾で速度が変わっても、このフレームに泳いだ距離で出す
     emitSwimFx(travel, dt);
@@ -4755,8 +4799,13 @@ function createRenderer(game, canvas) {
     if (enemy.spawnAge < CONFIG.ROOM_SPAWN_FADE_TIME) {
       alpha = enemy.spawnAge / CONFIG.ROOM_SPAWN_FADE_TIME * 0.5;
     }
-    const x = enemy.pos.x;
-    const y = enemy.pos.y;
+    let x = enemy.pos.x;
+    let y = enemy.pos.y;
+    if (enemy.alive && enemy.impale) {
+      // 角に刺さっている間は、その場で細かく震える
+      x += (Math.random() * 2 - 1) * CONFIG.IMPALE_SHAKE;
+      y += (Math.random() * 2 - 1) * CONFIG.IMPALE_SHAKE;
+    }
     const bodyH = size * CONFIG.ENEMY_BODY_HEIGHT_RATIO;
     const tail = size * CONFIG.ENEMY_TAIL_RATIO;
     const fin = size * CONFIG.ENEMY_FIN_RATIO;
