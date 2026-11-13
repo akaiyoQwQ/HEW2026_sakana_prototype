@@ -590,6 +590,8 @@ const CONFIG = {
 
   // ===== ヒットフラッシュ =====
   FLASH_DURATION: 0.08,         // 秒。当たったものを白く描く時間。倒された敵が消えるまでの時間でもある
+  HIT_FLASH_STRENGTH: 0.6,      // 0〜1。当たった時の白さ。1で真っ白、小さいほど元の色が残る（カジキ・雑魚・ボスの当たった時の光）。
+                                // ドリフトのチャージ完了の白い点滅は、合図なので真っ白のまま
 
   // ===== カメラの振動 =====
   SHAKE_NORMAL: 12,             // px。通常体当たりの振れ幅（1体目）
@@ -3756,6 +3758,12 @@ function createRenderer(game, canvas) {
     }
     const fill = hexToRgb(colors.wallFill);
     list.push(overRgb(fill, hexToRgb(colors.wallGlow), CONFIG.WALL_GLOW_ALPHA));
+    // 当たった時の光（白を HIT_FLASH_STRENGTH で重ねた色）。ドットの層の雑魚とボスに使うので、一覧に入れておく
+    for (const key of ['enemy', 'enemyFin', 'boss', 'bossMarker']) {
+      if (typeof colors[key] === 'string') {
+        list.push(overRgb(hexToRgb(colors[key]), hexToRgb(colors.flash), CONFIG.HIT_FLASH_STRENGTH));
+      }
+    }
     for (const band of waterBandColors()) {
       const base = hexToRgb(band);
       list.push(base);
@@ -3892,7 +3900,8 @@ function createRenderer(game, canvas) {
   const sprites = {
     fish: null,       // カジキの元の絵
     fishFast: null,   // 回転の色を重ねた絵（回転ぶんが乗っている間）
-    fishWhite: null,  // 真っ白に塗った絵（被弾の点滅、チャージ完了の点滅）
+    fishWhite: null,  // 真っ白に塗った絵（チャージ完了の点滅）
+    fishHit: null,    // 白を HIT_FLASH_STRENGTH の濃さで重ねた絵（当たった時の光）
     fishGhost: null,  // 回転の色一色で塗った絵（回転加速の残像）
     hitNormal: null,
     hitSpin: null,
@@ -3925,6 +3934,7 @@ function createRenderer(game, canvas) {
     sprites.fish = img;
     sprites.fishFast = tintedSprite(img, colors.fishFast, CONFIG.PLAYER_SPRITE_FAST_TINT);
     sprites.fishWhite = tintedSprite(img, colors.flash, 1);
+    sprites.fishHit = tintedSprite(img, colors.flash, CONFIG.HIT_FLASH_STRENGTH);
     sprites.fishGhost = tintedSprite(img, colors.fishFast, 1);
   });
   loadSprite(ASSET_DATA.hitNormal, function (img) {
@@ -4713,11 +4723,16 @@ function createRenderer(game, canvas) {
       // 回転ぶんが乗っている間は赤に寄せて、超スピード帯だと分かるようにする
       color = colors.fishFast;
     }
-    let isWhite = fish.flash > 0;
+    // 白くする理由は2つ。チャージ完了の点滅（真っ白）と、当たった時の光（白を少し弱めて重ねる）
+    const isHit = fish.flash > 0;
+    let isWhite = isHit;
     if (white) {
       isWhite = true;
     }
-    if (isWhite) {
+    if (isHit) {
+      color = mixColor(color, colors.flash, CONFIG.HIT_FLASH_STRENGTH);
+    }
+    if (white) {
       color = colors.flash;
     }
     ctx.fillStyle = color;
@@ -4737,7 +4752,10 @@ function createRenderer(game, canvas) {
     if (fish.spinBonus > 0) {
       img = sprites.fishFast;
     }
-    if (isWhite) {
+    if (isHit) {
+      img = sprites.fishHit;
+    }
+    if (white) {
       img = sprites.fishWhite;
     }
     drawFishSprite(img);
@@ -4789,9 +4807,9 @@ function createRenderer(game, canvas) {
       if (enemy.flash <= 0) {
         return;
       }
-      // 倒された直後は白くふくらんで消える
-      color = colors.flash;
-      finColor = colors.flash;
+      // 倒された直後は白っぽくふくらんで消える（真っ白にはせず、元の色を少し残す）
+      color = mixColor(colors.enemy, colors.flash, CONFIG.HIT_FLASH_STRENGTH);
+      finColor = mixColor(colors.enemyFin, colors.flash, CONFIG.HIT_FLASH_STRENGTH);
       size = r * 1.5;
     }
     // 湧いている途中は薄く描く。この間は当たり判定もない
@@ -5342,9 +5360,9 @@ function createRenderer(game, canvas) {
         color = colors.bossMarker;
       }
     }
-    // 当てた時の白い光は、点滅より優先する
+    // 当てた時の白い光は、点滅より優先する（真っ白にはせず、元の色を少し残す）
     if (boss.flash > 0) {
-      color = colors.flash;
+      color = mixColor(color, colors.flash, CONFIG.HIT_FLASH_STRENGTH);
     }
     ctx.save();
     ctx.translate(boss.pos.x, boss.pos.y);
