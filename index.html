@@ -21,6 +21,11 @@
     --bg-seaweed: #12447a;  /* 奥の海藻（薄く描く） */
     --light-blob: #e3f5fb;  /* 奥のやわらかい光の形 */
     --fg-silhouette: #082848; /* 画面の下の手前の影 */
+    --fg-hill: #1e6a70;     /* 手前の青緑の丘（ドット絵のコンセプトアートより） */
+    --cloud: #eef6f8;       /* 画面の上の、大きな平たい雲 */
+    --cloud-shade: #c8e3ee; /* 雲の下側の、少し暗い色 */
+    --far-ceiling: #0b3a78; /* 奥の、上から垂れ下がる地形の影 */
+    --far-hill: #4a78c8;    /* 奥の、下から盛り上がる地形の影 */
     --enemy-fin: #b8460f;   /* 雑魚のひれ */
     --fg: #d8ecef;          /* HUDの文字 */
     --muted: #7fa3ab;       /* HUDの補助文字 */
@@ -633,12 +638,13 @@ const CONFIG = {
   SPEEDLINE_FLOW_SCALE: 2.5,    // 倍。線が流れる速さが、魚の速さの何倍か
   SPEEDLINE_WIDTH: 2,           // px。線の太さ
   SPEEDLINE_ALPHA: 0.35,        // 濃さ
-  SPEEDLINE_LONG_MIN_SPEED: 700, // px/秒。この速さを超えている間は、画面を横切る長い線を流し続ける
-  SPEEDLINE_LONG_RATE: 10,      // 本/秒。長い線を流し続ける時の、1秒あたりの本数（MIN_SPEED の2倍の速さでこの数になる）
-  SPEEDLINE_LONG_LENGTH: vec2(300, 700), // px。長い線の長さの最小と最大
-  SPEEDLINE_LONG_BAND: 0.25,    // 0〜1。線を出す範囲。画面の上と下（縦に進んでいる時は左と右）それぞれ、高さ（幅）の何割か
-  SPEEDLINE_LONG_LIFETIME: 0.35, // 秒。長い線1本が出てから消えるまで
-  SPEEDLINE_LONG_SPREAD: 0.15,  // 0〜1。線を出す位置を、画面の外へどれだけはみ出して散らすか（幅に対する割合）。端の切れ目を目立たせないため
+  // 速さの線は、ドット絵のコンセプトアートに合わせて、短い白い線をたくさん散らす
+  SPEEDDASH_MIN_SPEED: 300,     // px/秒。この速さを超えている間は、短い線を流し続ける。遅めから出して、海の流れのようにも見せる
+  SPEEDDASH_RATE: 40,           // 本/秒。短い線を流し続ける時の、1秒あたりの本数（MIN_SPEED の2倍の速さでこの数。速さに比例して増える）
+  SPEEDDASH_LENGTH: vec2(8, 40), // px。短い線の長さの最小と最大
+  SPEEDDASH_BAND: 0.35,         // 0〜1。線を出す範囲。画面の上と下（縦に進んでいる時は左と右）それぞれ、高さ（幅）の何割か
+  SPEEDDASH_LIFETIME: 0.3,      // 秒。短い線1本が出てから消えるまで
+  SPEEDDASH_SPREAD: 0.15,       // 0〜1。線を出す位置を、画面の外へどれだけはみ出して散らすか（幅に対する割合）
 
   // ===== 倒した時・当てた時のしぶき（ぶしゃっ）と電撃（ばちっ） =====
   // 数や長さは倍率1の時の値。当たりの種類ごとに下の HIT_FX_SCALE_* をかける
@@ -752,7 +758,7 @@ const CONFIG = {
   // ===== 見た目: ドット絵 =====
   // カジキ・雑魚・ボス・岩・ゴールはなめらかなまま。背景・壁・演出だけを粗いドットにする
   PIXEL_ART_ENABLED: true,      // false なら今までのなめらかな見た目
-  PIXEL_VIEW_HEIGHT: 240,       // ドット。画面の縦を何ドットで描くか。小さいほど粗い
+  PIXEL_VIEW_HEIGHT: 180,       // ドット。画面の縦を何ドットで描くか。小さいほど粗い
   PIXEL_DITHER: true,           // true なら手前の層の薄いところを、決まった模様で間引いて表す（ドット絵の昔ながらの表し方）。
                                 // false なら薄さ半分を境に、描くか描かないかだけにする
   PIXEL_CACHE_MAX: 100000,      // 個。一番近い色の答えを覚えておく数の上限
@@ -797,6 +803,23 @@ const CONFIG = {
   FG_SPAN: 2400,                // px（画面の座標）。手前の影を並べる幅。この幅ごとに同じ並びを繰り返す
   FG_LUMP_COUNT: 9,             // 個。手前のもこもこした岩の数（FG_SPAN の幅あたり）
   FG_WEED_COUNT: 7,             // 本。手前の水草の数（FG_SPAN の幅あたり）
+  FG_WEED_HEIGHT: vec2(0.6, 1.6), // 倍。手前の水草の高さの最小と最大（手前の帯の高さに対して。1より大きいと帯からはみ出して高く伸びる）
+  FG_HILL_COUNT: 5,             // 個。手前の青緑の丘の数（FG_SPAN の幅あたり）。暗い岩より奥に描く
+
+  // ===== 見た目: ドット絵のコンセプトアートに合わせた背景 =====
+  BAND_EDGE_WAVE: vec2(6, 0.004), // 水の段の境目のゆらぎ。x は高さ（ドット）、y は細かさ（ワールドの 1px あたりの角度。大きいほど細かく波打つ）
+  CLOUD_COUNT: 4,               // 個。画面の上の、大きな平たい雲の数（BG_LAYER_SPAN の幅あたり）
+  CLOUD_SIZE: vec2(600, 1400),  // px。雲の横幅の最小と最大
+  CLOUD_HEIGHT_RATIO: 0.12,     // 倍。雲の厚さ（横幅に対して）。小さいほど平たい
+  CLOUD_SHADE_RATIO: 0.2,       // 倍。雲の下側の暗い部分の厚さ（雲の厚さに対して）
+  CLOUD_Y: vec2(0.3, 0.45),     // 0〜1。雲の底を置く高さの範囲（画面の上を0、下を1として）。
+                                // 水路は画面の真ん中あたりにあるので、上に置きすぎると天井の壁で雲の上が切れて白い板に見える
+  CLOUD_PARALLAX: 0.15,         // 0〜1。雲がカメラについて動く割合
+  CLOUD_BUMPS: 5,               // 個。雲の上側のもこもこの数
+  FAR_TERRAIN_LAYERS: 2,        // 段。奥に重ねる地形の影の段数。上から垂れる影1段と、下から盛り上がる影（残りの段数）
+  FAR_TERRAIN_HEIGHT: vec2(0.12, 0.3), // 0〜1。奥の地形の影の高さの最小と最大（画面の高さに対して）
+  FAR_TERRAIN_PARALLAX: vec2(0.25, 0.5), // 0〜1。奥の地形の影がカメラについて動く割合。一番奥の段から手前の段へ、この範囲で上げる
+  FAR_TERRAIN_WAVE: 0.003,      // 奥の地形の影の上の線の細かさ（ワールドの 1px あたりの角度）
 
   // ===== ステージの外の岩 =====
   // 模様はゲームの最初に1回だけ作って、並べて貼る。ステージに貼り付いているのでスクロールと一緒に流れる
@@ -1426,7 +1449,7 @@ function createGame() {
     state.timeStopped = false; // タイムを止めたか（ボスを倒した瞬間に止める）
     state.screenFlash = 0;     // 画面全体を白く光らせる残り時間
     state.speedLines = [];     // 風切りの線。{ x, y: 画面の座標, len, age, life }
-    state.speedLineCarry = 0;  // 長い線を流し続ける時の、出しきれなかった端数（本）
+    state.speedLineCarry = 0;  // 短い線を流し続ける時の、出しきれなかった端数（本）
     state.prevSpeed = 0;       // 前のフレームの速さ。グッと上がったかを見る
     state.bossDeathPos = vec2(0, 0); // ボスを倒した位置。ヒットストップの間カメラをここへ寄せる
     state.shakeOffset = vec2(0, 0);
@@ -1816,8 +1839,8 @@ function createGame() {
     state.viewSize = vec2(w, h);
   }
 
-  // 画面を横切る長い線の出どころ。進む向きと平行な2辺（横に進んでいれば上と下、縦なら左と右）の、
-  // 端から SPEEDLINE_LONG_BAND の帯の中のランダムな位置。真ん中（魚のいるあたり）には出さない
+  // 短い速さの線の出どころ。進む向きと平行な2辺（横に進んでいれば上と下、縦なら左と右）の、
+  // 端から SPEEDDASH_BAND の帯の中のランダムな位置。真ん中（魚のいるあたり）には出さない
   function speedLinePos() {
     const w = state.viewSize.x;
     const h = state.viewSize.y;
@@ -1825,26 +1848,26 @@ function createGame() {
     // 上下どちらの帯か（左右どちらの帯か）は半々
     const nearSide = Math.random() < 0.5;
     if (horizontal) {
-      const band = h * CONFIG.SPEEDLINE_LONG_BAND;
+      const band = h * CONFIG.SPEEDDASH_BAND;
       let y = Math.random() * band;
       if (!nearSide) {
         y = h - Math.random() * band;
       }
       // 線は後ろへ伸びて流れていくので、出す位置は画面の幅より少し外まで散らす
-      return vec2(randomRange(-w * CONFIG.SPEEDLINE_LONG_SPREAD, w * (1 + CONFIG.SPEEDLINE_LONG_SPREAD)), y);
+      return vec2(randomRange(-w * CONFIG.SPEEDDASH_SPREAD, w * (1 + CONFIG.SPEEDDASH_SPREAD)), y);
     }
-    const bandX = w * CONFIG.SPEEDLINE_LONG_BAND;
+    const bandX = w * CONFIG.SPEEDDASH_BAND;
     let x = Math.random() * bandX;
     if (!nearSide) {
       x = w - Math.random() * bandX;
     }
-    return vec2(x, randomRange(-h * CONFIG.SPEEDLINE_LONG_SPREAD, h * (1 + CONFIG.SPEEDLINE_LONG_SPREAD)));
+    return vec2(x, randomRange(-h * CONFIG.SPEEDDASH_SPREAD, h * (1 + CONFIG.SPEEDDASH_SPREAD)));
   }
 
   function addSpeedLine() {
     const p = speedLinePos();
-    const len = randomRange(CONFIG.SPEEDLINE_LONG_LENGTH.x, CONFIG.SPEEDLINE_LONG_LENGTH.y);
-    state.speedLines.push({ x: p.x, y: p.y, len: len, age: 0, life: CONFIG.SPEEDLINE_LONG_LIFETIME });
+    const len = randomRange(CONFIG.SPEEDDASH_LENGTH.x, CONFIG.SPEEDDASH_LENGTH.y);
+    state.speedLines.push({ x: p.x, y: p.y, len: len, age: 0, life: CONFIG.SPEEDDASH_LIFETIME });
   }
 
   // グッと速くなった瞬間にまとめて出す
@@ -1865,9 +1888,9 @@ function createGame() {
       speedLineBurst();
     }
     state.prevSpeed = raw;
-    // 速い間は長い線を流し続ける。速いほど多く（MIN_SPEED の2倍で RATE 本/秒）
-    if (speed > CONFIG.SPEEDLINE_LONG_MIN_SPEED) {
-      const rate = CONFIG.SPEEDLINE_LONG_RATE * (speed - CONFIG.SPEEDLINE_LONG_MIN_SPEED) / CONFIG.SPEEDLINE_LONG_MIN_SPEED;
+    // 速い間は短い線を流し続ける。速いほど多く（MIN_SPEED の2倍で RATE 本/秒）
+    if (speed > CONFIG.SPEEDDASH_MIN_SPEED) {
+      const rate = CONFIG.SPEEDDASH_RATE * (speed - CONFIG.SPEEDDASH_MIN_SPEED) / CONFIG.SPEEDDASH_MIN_SPEED;
       state.speedLineCarry += rate * dt;
       while (state.speedLineCarry >= 1) {
         state.speedLineCarry -= 1;
@@ -3788,6 +3811,11 @@ function createRenderer(game, canvas) {
     bgSeaweed: token('--bg-seaweed'),
     lightBlob: token('--light-blob'),
     fgSilhouette: token('--fg-silhouette'),
+    fgHill: token('--fg-hill'),
+    cloud: token('--cloud'),
+    cloudShade: token('--cloud-shade'),
+    farCeiling: token('--far-ceiling'),
+    farHill: token('--far-hill'),
     enemyFin: token('--enemy-fin'),
     fish: token('--fish'),
     fishFast: token('--fish-fast'),
@@ -5001,6 +5029,111 @@ function createRenderer(game, canvas) {
     ctx.globalAlpha = 1;
   }
 
+  // ===== ドット絵のコンセプトアートに合わせた奥の飾り =====
+  // 雲の元の位置。BG_LAYER_SPAN の幅に乱数で散らし、横に繰り返して使う
+  const cloudBase = [];
+  (function buildClouds() {
+    const rnd = makeRng(CONFIG.SEAWEED_SEED * 53);
+    for (let i = 0; i < CONFIG.CLOUD_COUNT; i++) {
+      const bumps = [];
+      for (let k = 0; k < CONFIG.CLOUD_BUMPS; k++) {
+        bumps.push({ at: (k + 0.5) / CONFIG.CLOUD_BUMPS + (rnd() - 0.5) * 0.15, h: 0.4 + rnd() * 0.6 });
+      }
+      cloudBase.push({
+        x: rnd() * CONFIG.BG_LAYER_SPAN,
+        y: CONFIG.CLOUD_Y.x + rnd() * (CONFIG.CLOUD_Y.y - CONFIG.CLOUD_Y.x),
+        w: CONFIG.CLOUD_SIZE.x + rnd() * (CONFIG.CLOUD_SIZE.y - CONFIG.CLOUD_SIZE.x),
+        bumps: bumps,
+      });
+    }
+  })();
+
+  // 雲の形。底は平ら（両端だけ少し丸める）、上はもこもこの山をつなげる
+  function cloudPath(c, left, baseY, hgt) {
+    ctx.beginPath();
+    ctx.moveTo(left, baseY);
+    const steps = 40;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      let y = 0;
+      for (const b of c.bumps) {
+        const d = (t - b.at) * CONFIG.CLOUD_BUMPS * 1.4;
+        // 山の形（中心で1、離れるほど0）を、いちばん高いものだけ使う
+        const bump = b.h * Math.max(0, 1 - d * d);
+        if (bump > y) {
+          y = bump;
+        }
+      }
+      // 両端に向かって低くして、雲の端が縦にスパッと切れないようにする
+      const taper = Math.pow(Math.sin(Math.PI * t), 0.35);
+      ctx.lineTo(left + c.w * t, baseY - y * hgt * taper);
+    }
+    ctx.lineTo(left + c.w, baseY);
+    ctx.closePath();
+  }
+
+  // 画面の上の、大きな平たい雲。下は平ら、上はもこもこ。下側を少し暗い色にして、厚みを出す
+  function drawClouds(camX, camY, viewW, viewH) {
+    for (const c of cloudBase) {
+      const cx = layerX(c.x, camX, viewW, CONFIG.CLOUD_PARALLAX, 0);
+      const baseY = camY + c.y * viewH;
+      const hgt = c.w * CONFIG.CLOUD_HEIGHT_RATIO;
+      const left = cx - c.w / 2;
+      // 同じ雲の形を2回描く。先に暗い色で、次に明るい色を少し上にずらして重ね、底に暗い縁を残して厚みを出す
+      const shade = hgt * CONFIG.CLOUD_SHADE_RATIO;
+      cloudPath(c, left, baseY, hgt);
+      ctx.fillStyle = colors.cloudShade;
+      ctx.fill();
+      cloudPath(c, left, baseY - shade, hgt - shade);
+      ctx.fillStyle = colors.cloud;
+      ctx.fill();
+    }
+  }
+
+  // 奥の地形の影。上から垂れる影1段と、下から盛り上がる影を重ねる。奥の段ほどカメラについてこない
+  function drawFarTerrain(camX, camY, viewW, viewH) {
+    const layers = CONFIG.FAR_TERRAIN_LAYERS;
+    for (let k = 0; k < layers; k++) {
+      let t = 0;
+      if (layers > 1) {
+        t = k / (layers - 1);
+      }
+      const parallax = CONFIG.FAR_TERRAIN_PARALLAX.x + (CONFIG.FAR_TERRAIN_PARALLAX.y - CONFIG.FAR_TERRAIN_PARALLAX.x) * t;
+      const ceiling = k === 0;
+      // 地形の線は、カメラについてくる割合を掛けたワールドの x で決める（遠い段ほどゆっくり流れる）
+      const shift = camX * (1 - parallax);
+      const freq = CONFIG.FAR_TERRAIN_WAVE;
+      const hMin = CONFIG.FAR_TERRAIN_HEIGHT.x * viewH;
+      const hMax = CONFIG.FAR_TERRAIN_HEIGHT.y * viewH;
+      ctx.beginPath();
+      if (ceiling) {
+        ctx.fillStyle = colors.farCeiling;
+        ctx.moveTo(camX - viewW, camY - viewH);
+      } else {
+        ctx.fillStyle = colors.farHill;
+        ctx.moveTo(camX - viewW, camY + viewH * 2);
+      }
+      const step = viewH / CONFIG.PIXEL_VIEW_HEIGHT * 2;
+      for (let x = camX - viewW; x <= camX + viewW * 2; x += step) {
+        const wx = x - shift;
+        const wave = (Math.sin(wx * freq + k * 2.1) + Math.sin(wx * freq * 0.37 + k * 5.3)) / 4 + 0.5;
+        const depth = hMin + (hMax - hMin) * wave;
+        if (ceiling) {
+          ctx.lineTo(x, camY + depth);
+        } else {
+          ctx.lineTo(x, camY + viewH - depth);
+        }
+      }
+      if (ceiling) {
+        ctx.lineTo(camX + viewW * 2, camY - viewH);
+      } else {
+        ctx.lineTo(camX + viewW * 2, camY + viewH * 2);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
   // 奥の海藻。画面の下の端から上へ伸びる、薄い大きな影。カメラよりゆっくり動いて奥行きを出す
   function drawBgSeaweed(camX, camY, viewW, viewH, time) {
     ctx.globalAlpha = CONFIG.BG_SEAWEED_ALPHA;
@@ -5020,8 +5153,13 @@ function createRenderer(game, canvas) {
     for (let i = 0; i < CONFIG.FG_LUMP_COUNT; i++) {
       fgBase.push({ kind: 'lump', x: rnd() * CONFIG.FG_SPAN, top: 0.4 + rnd() * 0.6, r: 0.6 + rnd() * 0.8 });
     }
+    // 丘は暗い岩より奥に描くので、先に並べる
+    for (let i = 0; i < CONFIG.FG_HILL_COUNT; i++) {
+      fgBase.unshift({ kind: 'hill', x: rnd() * CONFIG.FG_SPAN, w: 1.5 + rnd() * 1.5, top: 0.6 + rnd() * 0.5 });
+    }
     for (let i = 0; i < CONFIG.FG_WEED_COUNT; i++) {
-      fgBase.push({ kind: 'weed', x: rnd() * CONFIG.FG_SPAN, h: 0.5 + rnd() * 0.5, tilt: (rnd() - 0.5) * 0.5, phase: rnd() * TAU });
+      const hh = CONFIG.FG_WEED_HEIGHT.x + rnd() * (CONFIG.FG_WEED_HEIGHT.y - CONFIG.FG_WEED_HEIGHT.x);
+      fgBase.push({ kind: 'weed', x: rnd() * CONFIG.FG_SPAN, h: hh, tilt: (rnd() - 0.5) * 0.5, phase: rnd() * TAU });
     }
   })();
   function drawForeground(camX, scale, w, h, time) {
@@ -5048,7 +5186,16 @@ function createRenderer(game, canvas) {
         if (rx < -band * 2 || rx > w + band * 2) {
           continue;
         }
-        if (f.kind === 'lump') {
+        if (f.kind === 'hill') {
+          // 青緑の丘。横に長い半楕円を、帯の下から盛り上げる
+          ctx.save();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = colors.fgHill;
+          ctx.beginPath();
+          ctx.ellipse(rx, h, band * f.w, band * f.top, 0, Math.PI, TAU);
+          ctx.fill();
+          ctx.restore();
+        } else if (f.kind === 'lump') {
           // 岩。上の端が帯の中に収まる大きさの円を、下にはみ出させて置く
           const r = band * f.r;
           const topY = h - band * f.top;
@@ -5329,24 +5476,27 @@ function createRenderer(game, canvas) {
       stageShapePath(stage, left);
       ctx.clip();
       const bands = CONFIG.WATER_BANDS;
-      for (let i = 0; i < bands; i++) {
-        // 帯の真ん中の高さでの色を、上・真ん中・下の3色から混ぜて作る
-        const t = (i + 0.5) / bands;
-        let color;
-        if (t < CONFIG.WATER_MID_STOP) {
-          color = mixColor(colors.waterTop, colors.waterMid, t / CONFIG.WATER_MID_STOP);
-        } else {
-          color = mixColor(colors.waterMid, colors.waterBottom, (t - CONFIG.WATER_MID_STOP) / (1 - CONFIG.WATER_MID_STOP));
+      const bandColors = waterBandColors();
+      // 一番下の色で全体を塗ってから、上の段を順に重ねる。段の下の端は、まっすぐでなくゆらいだ線にする
+      // （ドット絵のコンセプトアートのように、段と段の境目をガタガタの階段状に見せる）
+      ctx.fillStyle = bandColors[bands - 1];
+      ctx.fillRect(camX - viewW, camY - viewH, viewW * 3, viewH * 3);
+      const dot = viewH / lh;
+      const amp = CONFIG.BAND_EDGE_WAVE.x * dot;
+      const freq = CONFIG.BAND_EDGE_WAVE.y;
+      for (let i = bands - 2; i >= 0; i--) {
+        ctx.fillStyle = bandColors[i];
+        ctx.beginPath();
+        ctx.moveTo(camX - viewW, camY - viewH);
+        // 段の境目を、ドット2つぶんの間隔でたどる。波は2つの正弦を足して、段ごとにずらして不規則に見せる
+        for (let x = camX - viewW; x <= camX + viewW * 2; x += dot * 2) {
+          const wave = Math.sin(x * freq + i * 1.7) * 0.6 + Math.sin(x * freq * 2.3 + i * 4.1) * 0.4;
+          ctx.lineTo(x, camY + viewH * (i + 1) / bands + wave * amp);
         }
-        ctx.fillStyle = color;
-        // 帯の境目にすき間が出ないよう、少し重ねる
-        ctx.fillRect(camX - viewW, camY + viewH * i / bands, viewW * 3, viewH / bands + 1);
+        ctx.lineTo(camX + viewW * 2, camY - viewH);
+        ctx.closePath();
+        ctx.fill();
       }
-      // 画面の外（揺れで見える端）も、上と下の色で埋めておく
-      ctx.fillStyle = colors.waterTop;
-      ctx.fillRect(camX - viewW, camY - viewH, viewW * 3, viewH);
-      ctx.fillStyle = colors.waterBottom;
-      ctx.fillRect(camX - viewW, camY + viewH, viewW * 3, viewH);
       ctx.restore();
     } else {
       const water = ctx.createLinearGradient(0, camY, 0, camY + viewH);
@@ -5362,7 +5512,13 @@ function createRenderer(game, canvas) {
     ctx.save();
     stageShapePath(stage, left);
     ctx.clip();
-    drawLightBlobs(camX, camY, viewW, viewH, state.realTime, pixel);
+    if (pixel) {
+      // ドット絵の時は、段の円の光の代わりに、平たい雲と奥の地形の影を重ねる
+      drawFarTerrain(camX, camY, viewW, viewH);
+      drawClouds(camX, camY, viewW, viewH);
+    } else {
+      drawLightBlobs(camX, camY, viewW, viewH, state.realTime, pixel);
+    }
     drawBgSeaweed(camX, camY, viewW, viewH, state.realTime);
     // 背景の縦線。速度感のため。コンセプトアートに合わせてごく薄く
     ctx.globalAlpha = CONFIG.GRID_ALPHA;
@@ -5397,6 +5553,15 @@ function createRenderer(game, canvas) {
     if (stage.type !== 'zako') {
       drawBossWalls(stage, left, layerScale, state.roomClosed);
     }
+    // ぶつかる相手（ゴール・ひび割れ岩・雑魚・ボス）も、ドット絵の層に描く
+    if (stage.type === 'zako') {
+      drawGoal(stage, state.realTime);
+    }
+    drawBreakables(state);
+    for (const enemy of state.enemies) {
+      drawEnemy(enemy);
+    }
+    drawBoss(state.boss, state.realTime);
     // 魚の後ろ側の演出
     drawSwimParticles(state);
     drawSlash(state);
@@ -5407,16 +5572,8 @@ function createRenderer(game, canvas) {
       flushLayer(pixelBack, pixelBackCtx, false);
     }
 
-    // ----- 真ん中の層（なめらか） -----
+    // ----- 真ん中の層（なめらか）：カジキと、その残像だけ -----
     beginWorld(mainCtx, scale);
-    if (stage.type === 'zako') {
-      drawGoal(stage, state.realTime);
-    }
-    drawBreakables(state);
-    for (const enemy of state.enemies) {
-      drawEnemy(enemy);
-    }
-    drawBoss(state.boss, state.realTime);
     drawBoostGhosts(state);
     drawFish(state.fish, isDriftBlinkWhite(state));
 
