@@ -22,8 +22,8 @@
     --light-blob: #e3f5fb;  /* 奥のやわらかい光の形 */
     --fg-silhouette: #082848; /* 画面の下の手前の影 */
     --fg-hill: #1e6a70;     /* 手前の青緑の丘（ドット絵のコンセプトアートより） */
-    --cloud: #eef6f8;       /* 画面の上の、大きな平たい雲 */
-    --cloud-shade: #c8e3ee; /* 雲の下側の、少し暗い色 */
+    --surface: #eef6f8;     /* 空から光に照らされた海面（水の中から見上げた明るい面） */
+    --surface-shade: #c8e3ee; /* 海面の下の縁の、少し暗い帯 */
     --far-ceiling: #0b3a78; /* 奥の、上から垂れ下がる地形の影 */
     --far-hill: #4a78c8;    /* 奥の、下から盛り上がる地形の影 */
     --enemy-fin: #b8460f;   /* 雑魚のひれ */
@@ -808,14 +808,14 @@ const CONFIG = {
 
   // ===== 見た目: ドット絵のコンセプトアートに合わせた背景 =====
   BAND_EDGE_WAVE: vec2(6, 0.004), // 水の段の境目のゆらぎ。x は高さ（ドット）、y は細かさ（ワールドの 1px あたりの角度。大きいほど細かく波打つ）
-  CLOUD_COUNT: 4,               // 個。画面の上の、大きな平たい雲の数（BG_LAYER_SPAN の幅あたり）
-  CLOUD_SIZE: vec2(600, 1400),  // px。雲の横幅の最小と最大
-  CLOUD_HEIGHT_RATIO: 0.12,     // 倍。雲の厚さ（横幅に対して）。小さいほど平たい
-  CLOUD_SHADE_RATIO: 0.2,       // 倍。雲の下側の暗い部分の厚さ（雲の厚さに対して）
-  CLOUD_Y: vec2(0.3, 0.45),     // 0〜1。雲の底を置く高さの範囲（画面の上を0、下を1として）。
-                                // 水路は画面の真ん中あたりにあるので、上に置きすぎると天井の壁で雲の上が切れて白い板に見える
-  CLOUD_PARALLAX: 0.15,         // 0〜1。雲がカメラについて動く割合
-  CLOUD_BUMPS: 5,               // 個。雲の上側のもこもこの数
+  // 海面。空から光に照らされた水面を、水の中から見上げた形。画面の上の方を横につながる明るい面で、下の縁がギザギザに揺れる
+  SURFACE_DEPTH: vec2(0.24, 0.4), // 0〜1。海面の下の縁が来る高さの範囲（画面の上を0、下を1として）。大きなうねりでこの間を行き来する。
+                                // 水路の天井は画面の上から2割くらいにあるので、それより下まで下ろさないと海面がほとんど壁に隠れる
+  SURFACE_WAVE: 0.004,          // 大きなうねりの細かさ（ワールドの 1px あたりの角度）。大きいほど細かく波打つ
+  SURFACE_JAG: 4,               // ドット。下の縁の細かいギザギザの高さ
+  SURFACE_SPEED: 0.4,           // 波打つ速さ（1秒あたりの角度）。大きいほど速く形が変わる
+  SURFACE_PARALLAX: 0.15,       // 0〜1。海面がカメラについて動く割合。小さいほど遠くに見える
+  SURFACE_SHADE: 5,             // ドット。縁のすぐ上の暗い帯の太さ。海面の裏側（下から見上げた面）の厚みを出す
   FAR_TERRAIN_LAYERS: 2,        // 段。奥に重ねる地形の影の段数。上から垂れる影1段と、下から盛り上がる影（残りの段数）
   FAR_TERRAIN_HEIGHT: vec2(0.12, 0.3), // 0〜1。奥の地形の影の高さの最小と最大（画面の高さに対して）
   FAR_TERRAIN_PARALLAX: vec2(0.25, 0.5), // 0〜1。奥の地形の影がカメラについて動く割合。一番奥の段から手前の段へ、この範囲で上げる
@@ -3812,8 +3812,8 @@ function createRenderer(game, canvas) {
     lightBlob: token('--light-blob'),
     fgSilhouette: token('--fg-silhouette'),
     fgHill: token('--fg-hill'),
-    cloud: token('--cloud'),
-    cloudShade: token('--cloud-shade'),
+    surface: token('--surface'),
+    surfaceShade: token('--surface-shade'),
     farCeiling: token('--far-ceiling'),
     farHill: token('--far-hill'),
     enemyFin: token('--enemy-fin'),
@@ -5030,62 +5030,36 @@ function createRenderer(game, canvas) {
   }
 
   // ===== ドット絵のコンセプトアートに合わせた奥の飾り =====
-  // 雲の元の位置。BG_LAYER_SPAN の幅に乱数で散らし、横に繰り返して使う
-  const cloudBase = [];
-  (function buildClouds() {
-    const rnd = makeRng(CONFIG.SEAWEED_SEED * 53);
-    for (let i = 0; i < CONFIG.CLOUD_COUNT; i++) {
-      const bumps = [];
-      for (let k = 0; k < CONFIG.CLOUD_BUMPS; k++) {
-        bumps.push({ at: (k + 0.5) / CONFIG.CLOUD_BUMPS + (rnd() - 0.5) * 0.15, h: 0.4 + rnd() * 0.6 });
-      }
-      cloudBase.push({
-        x: rnd() * CONFIG.BG_LAYER_SPAN,
-        y: CONFIG.CLOUD_Y.x + rnd() * (CONFIG.CLOUD_Y.y - CONFIG.CLOUD_Y.x),
-        w: CONFIG.CLOUD_SIZE.x + rnd() * (CONFIG.CLOUD_SIZE.y - CONFIG.CLOUD_SIZE.x),
-        bumps: bumps,
-      });
-    }
-  })();
-
-  // 雲の形。底は平ら（両端だけ少し丸める）、上はもこもこの山をつなげる
-  function cloudPath(c, left, baseY, hgt) {
-    ctx.beginPath();
-    ctx.moveTo(left, baseY);
-    const steps = 40;
-    for (let k = 0; k <= steps; k++) {
-      const t = k / steps;
-      let y = 0;
-      for (const b of c.bumps) {
-        const d = (t - b.at) * CONFIG.CLOUD_BUMPS * 1.4;
-        // 山の形（中心で1、離れるほど0）を、いちばん高いものだけ使う
-        const bump = b.h * Math.max(0, 1 - d * d);
-        if (bump > y) {
-          y = bump;
-        }
-      }
-      // 両端に向かって低くして、雲の端が縦にスパッと切れないようにする
-      const taper = Math.pow(Math.sin(Math.PI * t), 0.35);
-      ctx.lineTo(left + c.w * t, baseY - y * hgt * taper);
-    }
-    ctx.lineTo(left + c.w, baseY);
-    ctx.closePath();
+  // 海面の下の縁の高さ（ワールドの y）。大きなうねり2つと細かいギザギザを足す。
+  // うねりはカメラについてくる割合を掛けた x で決めるので、カメラよりゆっくり流れて遠くに見える
+  function surfaceEdgeY(x, camX, camY, viewH, time, dot) {
+    const wx = x - camX * (1 - CONFIG.SURFACE_PARALLAX);
+    const f = CONFIG.SURFACE_WAVE;
+    const sp = CONFIG.SURFACE_SPEED * time;
+    // 0〜1 のうねり
+    const swell = (Math.sin(wx * f + sp) + Math.sin(wx * f * 0.43 - sp * 0.7)) / 4 + 0.5;
+    const depth = CONFIG.SURFACE_DEPTH.x + (CONFIG.SURFACE_DEPTH.y - CONFIG.SURFACE_DEPTH.x) * swell;
+    // 細かいギザギザ。速く細かく揺れる
+    const jag = Math.sin(wx * f * 7.3 + sp * 2.1) * Math.sin(wx * f * 3.1 - sp * 1.3);
+    return camY + viewH * depth + jag * CONFIG.SURFACE_JAG * dot;
   }
 
-  // 画面の上の、大きな平たい雲。下は平ら、上はもこもこ。下側を少し暗い色にして、厚みを出す
-  function drawClouds(camX, camY, viewW, viewH) {
-    for (const c of cloudBase) {
-      const cx = layerX(c.x, camX, viewW, CONFIG.CLOUD_PARALLAX, 0);
-      const baseY = camY + c.y * viewH;
-      const hgt = c.w * CONFIG.CLOUD_HEIGHT_RATIO;
-      const left = cx - c.w / 2;
-      // 同じ雲の形を2回描く。先に暗い色で、次に明るい色を少し上にずらして重ね、底に暗い縁を残して厚みを出す
-      const shade = hgt * CONFIG.CLOUD_SHADE_RATIO;
-      cloudPath(c, left, baseY, hgt);
-      ctx.fillStyle = colors.cloudShade;
-      ctx.fill();
-      cloudPath(c, left, baseY - shade, hgt - shade);
-      ctx.fillStyle = colors.cloud;
+  // 海面。画面の上から下の縁まで、暗い帯 → 明るい面の順に重ねる（明るい面を少し上で止めて、縁に暗い帯を残す）
+  function drawSurface(camX, camY, viewW, viewH, time) {
+    const dot = viewH / CONFIG.PIXEL_VIEW_HEIGHT;
+    const layers = [
+      { color: colors.surfaceShade, lift: 0 },
+      { color: colors.surface, lift: CONFIG.SURFACE_SHADE * dot },
+    ];
+    for (const layer of layers) {
+      ctx.fillStyle = layer.color;
+      ctx.beginPath();
+      ctx.moveTo(camX - viewW, camY - viewH);
+      for (let x = camX - viewW; x <= camX + viewW * 2; x += dot * 2) {
+        ctx.lineTo(x, surfaceEdgeY(x, camX, camY, viewH, time, dot) - layer.lift);
+      }
+      ctx.lineTo(camX + viewW * 2, camY - viewH);
+      ctx.closePath();
       ctx.fill();
     }
   }
@@ -5513,9 +5487,10 @@ function createRenderer(game, canvas) {
     stageShapePath(stage, left);
     ctx.clip();
     if (pixel) {
-      // ドット絵の時は、段の円の光の代わりに、平たい雲と奥の地形の影を重ねる
+      // ドット絵の時は、段の円の光の代わりに、奥の地形の影と、光に照らされた海面を重ねる
+      // 海面が一番奥。その手前に、上から垂れる地形の影と下から盛り上がる地形の影を重ねる
+      drawSurface(camX, camY, viewW, viewH, state.realTime);
       drawFarTerrain(camX, camY, viewW, viewH);
-      drawClouds(camX, camY, viewW, viewH);
     } else {
       drawLightBlobs(camX, camY, viewW, viewH, state.realTime, pixel);
     }
