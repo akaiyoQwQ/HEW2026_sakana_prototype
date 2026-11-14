@@ -351,7 +351,7 @@ const CONFIG = {
   INPUT_SPEED_MAX: 540,         // px/秒。進行方向と同じ入力で積める速度の上限。入力ぶんの頭打ち
   INPUT_HOLD_TIME: 1.0,         // 秒。向きを合わせた入力が途切れてから、入力ぶんが減り始めるまで
   INPUT_DECAY_TIME: 3.0,        // 秒。減り始めてから入力ぶんが0に戻るまで。減り始めた時の量に関係なくこの時間で戻る
-  INPUT_ACCEL_TIME: 15.0,       // 秒。入力ぶんが0から INPUT_SPEED_MAX に届くまでの時間。1秒あたりの加速量は INPUT_SPEED_MAX ÷ これで計算する
+  INPUT_ACCEL_TIME: 7.5,        // 秒。入力ぶんが0から INPUT_SPEED_MAX に届くまでの時間。1秒あたりの加速量は INPUT_SPEED_MAX ÷ これで計算する
   INPUT_ALIGN_ANGLE_DEG: 45,    // 度。入力方向と進行方向の差がこれ以内なら「同じ方向」とみなして加速する
   SPIN_BONUS_PER_HIT: 50,       // px/秒。回転アタックで敵1体に当てるごとに積み上がる速度。上限なし
   NORMAL_KILL_BONUS: 20,        // px/秒。ふつうの体当たりで1体倒すごとに積む速度（撃破ぶん）。回転アタックより小さくして、回転の方が得なままにする
