@@ -52,6 +52,10 @@
     --spike-tip: #e8442e;   /* 迫り岩のトゲの先。触ると痛いと一目で分かる赤 */
     --rock-crack: #f2d9a0;  /* ひび割れ岩のひび。中から光が漏れているように見せる明るい色 */
     --rock-dark: #232326;   /* 岩。石の暗い縁とひび、水との境目の縁取り */
+    --score-fill: #ffd166;  /* スコアゲージの残っている部分 */
+    --score-empty: rgba(4, 19, 27, 0.55); /* スコアゲージの減った部分 */
+    --score-frame: #d8ecef; /* スコアゲージの枠とランクの区切り線 */
+    --result-time-size: 64px; /* クリア画面のタイムの文字の大きさ。ランクの文字はこれの SCORE_RANK_SHOW_SCALE 倍 */
     --font-hud: "DotGothic16", "Hiragino Sans", "Noto Sans JP", monospace;
     color-scheme: dark;
   }
@@ -223,7 +227,34 @@
   .transition-bar.top { top: 0; }
   .transition-bar.bottom { bottom: 0; }
   .result .title { font-size: 40px; color: var(--goal); }
-  .result .time { font-size: 64px; font-variant-numeric: tabular-nums; }
+  .result .time { font-size: var(--result-time-size); font-variant-numeric: tabular-nums; }
+  /* ランクの文字。大きさはスクリプトが SCORE_RANK_SHOW_SCALE から決める（タイムの文字の何倍か） */
+  .result .rank { color: var(--goal); line-height: 1; }
+  .result .rank[hidden] { display: none; }
+  /* スコアゲージ。幅・高さ・位置はスクリプトが CONFIG から決める。HUD の左右の列の間、画面の上の真ん中に置く */
+  .score-gauge {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    font-size: 13px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+  }
+  .score-gauge[hidden] { display: none; }
+  .score-gauge .bar {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: var(--score-empty);
+    border: 1px solid var(--score-frame);
+    box-sizing: border-box;
+  }
+  .score-gauge .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--score-fill); }
+  /* ランクの区切りの縦線。ゲージの上下に少しはみ出させて、区切りだと分かるようにする */
+  .score-gauge .mark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--score-frame); }
+  /* 区切りと区切りの間の真ん中に、その区間のランクの文字を置く */
+  .score-gauge .letter { position: absolute; top: 100%; margin-top: 2px; transform: translateX(-50%); color: var(--muted); }
+  .score-gauge .letter.on { color: var(--goal); }
   .result .sub { color: var(--muted); margin-top: 12px; }
   .result .detail { font-size: 22px; line-height: 1.8; font-variant-numeric: tabular-nums; margin-top: 8px; }
   @media (prefers-reduced-motion: reduce) {
@@ -259,9 +290,14 @@
 <div class="death-text" id="deathText" hidden></div>
 <div class="limit-callout" id="limitCallout" hidden></div>
 
+<div class="score-gauge" id="scoreGauge" hidden>
+  <div class="bar" id="scoreBar"><div class="fill" id="scoreFill"></div></div>
+</div>
+
 <div class="result" id="result" hidden>
   <div>
     <div class="title" id="resultTitle">STAGE CLEAR</div>
+    <div class="rank" id="resultRank" hidden></div>
     <div class="time" id="resultTime">0.00</div>
     <div class="detail" id="resultDetail" hidden></div>
     <div class="sub" id="resultSub"></div>
@@ -376,6 +412,20 @@ const CONFIG = {
   SPIN_MOUSE_BUTTON: 2,         // 回転アタックを出すマウスのボタン。0 = 左クリック / 1 = ホイール押し込み / 2 = 右クリック
   ROLL_VISUAL_RPS: 10,           // 回転/秒。きりもみの見た目の回る速さ。挙動には影響しない
   ROLL_BACK_DARKEN: 0.55,       // 倍。きりもみで裏側が見えている時の明るさ。1で変化なし
+
+  // ===== スコアゲージとランク =====
+  // 画面の上のゲージ。中身は「のこり時間」そのもので、満タンから減っていき、空になると時間切れ（ボス戦は時間切れにならない）。
+  // ゴールに着いた瞬間（ボス戦は倒した瞬間）に、ゲージが満タンの何割残っているかでランクを決める
+  SCORE_RANK_SS: 0.5,           // 割合。ゴール時にゲージがこれ以上残っていたら SS
+  SCORE_RANK_S: 0.35,           // 割合。S の下限
+  SCORE_RANK_A: 0.2,            // 割合。A の下限
+  SCORE_RANK_B: 0.1,            // 割合。B の下限。これ未満は C
+  SCORE_KILL_REFILL: 0.15,      // 秒。体当たり・角で1体倒すごとにゲージ（＝のこり時間）を戻す量。満タンは超えない
+  SCORE_KILL_REFILL_SPIN: 0.15, // 秒。回転で1体倒した時に戻す量。最初は同じ。回転を得にしたくなったらここを上げる
+  BOSS_SCORE_TIME: 30,          // 秒。ボス戦（制限時間なし）のゲージの長さ。ボス戦を通しで走るボットがまだないので仮の値
+  SCORE_GAUGE_SIZE: vec2(480, 14), // px。ゲージの幅と高さ
+  SCORE_GAUGE_POS_Y: 24,        // px。画面の上からゲージの上端までの距離
+  SCORE_RANK_SHOW_SCALE: 3,     // 倍。クリア画面のランクの文字の大きさ（タイムの文字の何倍か）
 
   // ===== 時間制限と崩落 =====
   // 制限時間は各ステージの timeLimit（秒、ゲーム内時間）。0 になるとステージが岩で崩れて TIME OVER、少しして自動でやり直す
@@ -1360,6 +1410,13 @@ function createGame() {
     if (stage.timeLimit) {
       state.timeLeft = stage.timeLimit;
     }
+    // スコアゲージの満タンの長さ。制限時間のあるステージは制限時間そのもの、ボス戦は専用の秒数
+    state.scoreMax = CONFIG.BOSS_SCORE_TIME;
+    if (stage.timeLimit) {
+      state.scoreMax = stage.timeLimit;
+    }
+    // ボス戦のゲージの残り。制限時間のあるステージでは使わない（timeLeft がゲージの中身になる）
+    state.bossScoreLeft = CONFIG.BOSS_SCORE_TIME;
     state.dead = false;        // 崩れて画面が真っ暗になったか。true になったら魚を動かさない
     state.collapseAt = -1;     // 崩れ始めた実時間（0 秒になった瞬間）。崩れている間も、真っ暗になるまでは魚を動かせる
     state.calloutIndex = 0;    // 次に出す残り時間の数字（LIMIT_CALLOUTS の番号）
@@ -2828,6 +2885,59 @@ function createGame() {
       spawnKillFx(enemy.pos, 'normal');
     }
     state.stats.kills++;
+    let refill = CONFIG.SCORE_KILL_REFILL;
+    if (kind === 'spin') {
+      refill = CONFIG.SCORE_KILL_REFILL_SPIN;
+    }
+    refillScore(refill);
+  }
+
+  // スコアゲージを戻す。制限時間のあるステージでは、のこり時間がゲージなので、のこり時間そのものを延ばす。
+  // 満タンは超えない。崩れ始めた後（時間切れ）は、もう戻さない
+  function refillScore(amount) {
+    if (state.timeLeft !== null) {
+      if (state.collapseAt >= 0) {
+        return;
+      }
+      state.timeLeft = Math.min(state.timeLeft + amount, state.scoreMax);
+    } else if (!state.timeStopped) {
+      state.bossScoreLeft = Math.min(state.bossScoreLeft + amount, state.scoreMax);
+    }
+  }
+
+  // 今のゲージの残り（秒）
+  function scoreLeft() {
+    if (state.timeLeft !== null) {
+      return state.timeLeft;
+    }
+    return state.bossScoreLeft;
+  }
+
+  // 今のゲージが満タンの何割残っているか（0〜1）
+  function scoreRatio() {
+    return clamp(scoreLeft() / state.scoreMax, 0, 1);
+  }
+
+  // 割合からランクの名前を決める。区切りは高い方から順に見る
+  function rankOf(ratio) {
+    const ranks = scoreRanks();
+    for (const r of ranks) {
+      if (ratio >= r.min) {
+        return r.name;
+      }
+    }
+    return 'C';
+  }
+
+  // ランクと下限の一覧。高い方から。ゲージの区切り線と文字もこれから作る
+  function scoreRanks() {
+    return [
+      { name: 'SS', min: CONFIG.SCORE_RANK_SS },
+      { name: 'S', min: CONFIG.SCORE_RANK_S },
+      { name: 'A', min: CONFIG.SCORE_RANK_A },
+      { name: 'B', min: CONFIG.SCORE_RANK_B },
+      { name: 'C', min: 0 },
+    ];
   }
 
   // 角に刺さっている敵の時間を進め、ディレイが終わったら弾けさせる
@@ -3128,6 +3238,8 @@ function createGame() {
       }
       state.clearAt = state.realTime;
       state.stageTimes[state.stageIndex] = state.clearTime;
+      // ランクはこの瞬間のゲージで決める（ボス戦は倒した瞬間にゲージが止まっている）
+      state.stageRanks[state.stageIndex] = rankOf(scoreRatio());
     }
   }
 
@@ -3362,6 +3474,7 @@ function createGame() {
   function retry() {
     state.quickIntro = true;
     state.stageTimes.length = state.stageIndex;
+    state.stageRanks.length = state.stageIndex;
     state.transition = null;
     state.introPaused = false;
     reset();
@@ -3372,8 +3485,10 @@ function createGame() {
     if (isFinished()) {
       state.stageIndex = 0;
       state.stageTimes = [];
+      state.stageRanks = [];
     }
     state.stageTimes.length = state.stageIndex;
+    state.stageRanks.length = state.stageIndex;
     // R のやり直しは、いつものスタート演出から
     state.quickIntro = false;
     // つなぎの途中でやり直した時は、帯を消してすぐに始める
@@ -3612,6 +3727,13 @@ function createGame() {
           startCollapse();
         }
       }
+      // ボス戦のゲージ。時間切れにはせず、0 で止める。倒した瞬間（タイムを止めた時）からは減らさない
+      if (state.timeLeft === null && !state.timeStopped) {
+        state.bossScoreLeft -= gameDt;
+        if (state.bossScoreLeft < 0) {
+          state.bossScoreLeft = 0;
+        }
+      }
       updateBreakables(gameDt);
       updateFish(gameDt);
       updateBoss(gameDt);
@@ -3633,6 +3755,7 @@ function createGame() {
   // どのステージを遊んでいるかと、クリアしたステージのタイム。reset() では消さない
   state.stageIndex = 0;
   state.stageTimes = [];
+  state.stageRanks = [];       // クリアしたステージのランク。stageTimes と同じ番号
   state.zoom = 1;              // カメラの引き具合。1 で引いていない。ステージをまたいでも急に変えないよう reset の外で持つ
   state.quickIntro = false;    // true なら、スタート演出をカウントダウンなしの短いものにする（崩落からのやり直し）
   // マウスで向きを合わせる操作。やり直しをまたいでもカーソルの位置は変わらないので、reset の外で持つ
@@ -3667,6 +3790,9 @@ function createGame() {
     rawSpeed: rawSpeed,
     warnProgress: warnProgress,
     calloutInfo: calloutInfo,
+    scoreRatio: scoreRatio,
+    scoreRanks: scoreRanks,
+    rankOf: rankOf,
     turnRate: turnRate,
     isSpinning: isSpinning,
     isDriftCharged: isDriftCharged,
@@ -5741,6 +5867,36 @@ function start() {
   const result = document.getElementById('result');
   const resultTitle = document.getElementById('resultTitle');
   const resultTime = document.getElementById('resultTime');
+  const resultRank = document.getElementById('resultRank');
+  resultRank.style.fontSize = 'calc(var(--result-time-size) * ' + CONFIG.SCORE_RANK_SHOW_SCALE + ')';
+  // スコアゲージ。大きさと位置を CONFIG から決め、ランクの区切り線と文字を一度だけ作る
+  const scoreGauge = document.getElementById('scoreGauge');
+  const scoreBar = document.getElementById('scoreBar');
+  const scoreFill = document.getElementById('scoreFill');
+  scoreGauge.style.width = CONFIG.SCORE_GAUGE_SIZE.x + 'px';
+  scoreGauge.style.height = CONFIG.SCORE_GAUGE_SIZE.y + 'px';
+  scoreGauge.style.top = CONFIG.SCORE_GAUGE_POS_Y + 'px';
+  const scoreLetters = {};
+  {
+    const ranks = game.scoreRanks();
+    // 高い方から並んでいるので、ひとつ上のランクの下限がその区間の上の端になる
+    let upper = 1;
+    for (const r of ranks) {
+      if (r.min > 0) {
+        const mark = document.createElement('div');
+        mark.className = 'mark';
+        mark.style.left = (r.min * 100) + '%';
+        scoreBar.appendChild(mark);
+      }
+      const letter = document.createElement('div');
+      letter.className = 'letter';
+      letter.textContent = r.name;
+      letter.style.left = ((r.min + upper) / 2 * 100) + '%';
+      scoreBar.appendChild(letter);
+      scoreLetters[r.name] = letter;
+      upper = r.min;
+    }
+  }
   const resultDetail = document.getElementById('resultDetail');
   const resultSub = document.getElementById('resultSub');
   const countdown = document.getElementById('countdown');
@@ -5844,6 +6000,14 @@ function start() {
       hudLimit.textContent = s.timeLeft.toFixed(1);
       hudLimit.classList.toggle('warn', game.warnProgress() > 0 || s.collapseAt >= 0);
     }
+    // スコアゲージ。説明画面の間は隠す。今いる区間のランクの文字を光らせる
+    scoreGauge.hidden = s.title;
+    const ratio = game.scoreRatio();
+    scoreFill.style.width = (ratio * 100) + '%';
+    const nowRank = game.rankOf(ratio);
+    for (const name in scoreLetters) {
+      scoreLetters[name].classList.toggle('on', name === nowRank);
+    }
     deathText.hidden = !(s.dead && s.deathAt >= 0);
     // 残り時間の数字。出た瞬間に大きく濃く、縮みながら薄くなる
     const co = game.calloutInfo();
@@ -5915,7 +6079,15 @@ function start() {
     result.hidden = !s.cleared;
     if (s.cleared) {
       resultTime.textContent = s.clearTime.toFixed(2);
+      resultRank.hidden = true;
+      const clearRank = s.stageRanks[s.stageIndex];
+      if (clearRank !== undefined) {
+        resultRank.hidden = false;
+        resultRank.textContent = clearRank;
+      }
       if (game.isFinished()) {
+        // 最後は全ステージの一覧を出すので、大きなランクの文字は出さない
+        resultRank.hidden = true;
         resultTitle.textContent = 'ALL CLEAR';
         let total = 0;
         const lines = [];
@@ -5926,7 +6098,11 @@ function start() {
             lines.push(STAGES[i].label + '　--');
           } else {
             total += t;
-            lines.push(STAGES[i].label + '　' + t.toFixed(2));
+            let rankText = '';
+            if (s.stageRanks[i] !== undefined) {
+              rankText = '　' + s.stageRanks[i];
+            }
+            lines.push(STAGES[i].label + '　' + t.toFixed(2) + rankText);
           }
         }
         resultTime.textContent = '合計 ' + total.toFixed(2);
