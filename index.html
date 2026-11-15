@@ -747,6 +747,10 @@ const CONFIG = {
   // ===== 水路のステージ（STAGE 1〜4・6。折れ線に沿った水路を岩盤に掘る。奥の目標物に触れたらクリア） =====
   // 水路は { points: 折れ線の点, width: 幅 } の集まり。点の間は太い線、点のところは丸くつなぐ。分かれ道は水路をもう1本足す。
   // 最初の水路の最初の点の左に、スタート演出で泳いでくる助走の区間を自動で足す（長さは INTRO_SPEED とカウントダウンから計算）
+  MAP_SCALE: 17,                // px。ステージ地図の絵の1あたりのゲームの長さ。全ステージ共通。②の道幅（絵の上で約22）を、それまでの道幅 380px に合わせた値
+  GATE_WIDTH: 8,
+  WATER_CLAMP_PASSES: 3,        // 回。地図のステージで、縁にめり込んだ体を押し戻す計算を繰り返す回数（へこんだ角で2つの縁に挟まれた時用）
+  SEAWEED_SIDE_PROBE: 6,        // px。地図のステージの縁で、どちらが水の側かを調べるために辺から離す距離                // px。ボスの部屋の入口がふさがった時に描く線の太さ
   COURSE_VIEW_MARGIN: 400,      // px。水路のいちばん外側から、カメラが映せる範囲の端までの余白。岩盤を見せる幅
   ZAKO_GOAL_RADIUS: 90,         // px。目標物の大きさ（当たり半径）。どの向きから触れてもクリア
   ZAKO_GOAL_PULSE: 0.1,         // 目標物が脈打つ大きさの割合。0.1なら半径が±10%ふくらむ。見た目だけで当たりは変わらない
@@ -1116,274 +1120,249 @@ function courseStage(def) {
   };
 }
 
-// ===== ステージの作り（v79 から、どりゃどりゃさんのステージ地図の10ステージ） =====
-// 地図の記号: ⊗ ボス / ⊠ 尖った石（迫り岩） / □ 石（置き岩） / × 敵 / ○ スタート / △ ゴール。
-// 道の形は地図の線をなぞった仮置き。座標は x が右、y が下。長さ・幅・位置は遊んで直す前提で、ステージごとに数字で並べる
-// 制限時間（timeLimit）は、ボットで「半分くらい倒す・壊すと間に合い、何もしないと切れる」長さを測って決める
-
-// ===== ① Move：向きの変え方と、向ききった時の加速。敵なし =====
-// ゆるい道 → 少し上がる → 段差をまっすぐ上がる → ゴール
-const M1_A = [vec2(0, 0), vec2(1600, 0), vec2(2100, -300), vec2(3400, -300)];
-const M1_B = [vec2(3400, -300), vec2(3400, -1100), vec2(4900, -1100)];
-const STAGE_1 = courseStage({
-  label: 'STAGE 1  Move',
-  start: vec2(0, 0),
-  corridors: [
-    { points: M1_A, width: 480 },
-    { points: M1_B, width: 380 },
-  ],
-  goal: vec2(4650, -1100),
-  timeLimit: 13, // 秒。敵も石もないので、ボットのクリアタイム（8.5秒）の約1.5倍のふつうの制限時間
+// ===== ステージの作り（v81 から、どりゃどりゃさんのステージ地図をそのまま写した10ステージ） =====
+// 地図の絵を拡大して、壁の線・記号（× 敵 / □ 置き岩 / ⊠ 尖った迫り岩 / ○ スタート / △ ゴール / ⊗ ボス）の位置を測った値。
+// 数字は地図の絵の上の座標（ページの横幅を 1123 とした単位）のまま並べ、MAP_SCALE を掛けてゲームの座標にする。
+// 縮尺は全ステージ共通の1つだけ。ステージごとに伸ばしたり縮めたりしない。
+// outer = 泳げる場所の外側の縁（スタート側の口から一周）。最後の点から最初の点へ戻る辺がスタート側の口で、
+//   そこにスタート演出の助走の区間を足す。holes = 泳げる場所の中の島（⑤の上下の道の間、⑦の輪の中）
+// 敵は今は1種類（地図の ×）。⊠ は左へ向かってくる迫り岩
+const MAP_1 = {
+  start: [304.2, 190.5],
+  startDeg: 0,
+  outer: [[304.2, 182.8], [325.0, 182.0], [335.0, 173.8], [359.2, 173.0], [360.0, 174.7], [373.3, 182.2], [390.0, 181.2], [390.8, 180.3], [389.2, 158.7], [390.8, 158.3], [420.0, 155.3], [420.7, 154.5], [421.7, 154.0], [422.7, 153.7], [423.8, 153.6], [424.9, 153.7], [425.9, 153.9], [427.0, 154.3], [427.9, 154.9], [428.7, 155.6], [429.4, 156.4], [429.9, 157.3], [430.3, 158.3], [430.6, 159.4], [430.6, 160.5], [430.5, 161.5], [430.2, 162.6], [429.7, 163.6], [429.1, 164.4], [428.3, 165.2], [427.4, 165.8], [426.5, 166.3], [425.4, 166.6], [424.4, 166.8], [423.3, 166.5], [405.0, 170.0], [404.2, 170.8], [405.8, 188.3], [400.0, 191.3], [370.0, 193.3], [368.3, 193.3], [352.5, 185.0], [350.0, 184.2], [336.7, 184.7], [335.0, 186.7], [325.0, 195.0], [302.5, 196.2]],
+  holes: [],
   enemies: [],
-  botPath: M1_A.concat(M1_B.slice(1)),
-});
+  rocks: [],
+  spikes: [],
+  goal: [423.3, 160.3],
+};
 
-// ===== ② Kill：ジグザグの道に敵を散らし、ゴールの前に固める =====
-const K2 = [vec2(0, 0), vec2(1000, 0), vec2(1500, -350), vec2(2300, -350), vec2(2800, 0), vec2(3600, 0),
-  vec2(4100, -450), vec2(5000, -450), vec2(5500, 0), vec2(6300, 0), vec2(6800, -400), vec2(7700, -400)];
-const STAGE_2 = courseStage({
-  label: 'STAGE 2  Kill',
-  start: vec2(0, 0),
-  corridors: [
-    { points: K2, width: 380 },
-  ],
-  goal: vec2(7500, -400),
-  timeLimit: 9, // 秒。1体も倒さずに泳いだボットのタイム（12.3秒）の約3/4。倒して戻すぶんがないと間に合わない
-  enemies: [
-    // 道の途中に1体ずつ、左右に少しずらして散らす
-    pathPoint(K2, 700, -60),
-    pathPoint(K2, 1500, 60),
-    pathPoint(K2, 2300, -60),
-    pathPoint(K2, 3000, 0),
-    pathPoint(K2, 3700, 60),
-    // 上の山の上に固まり
-    ...alongPath(K2, 4300, 4700, 3, -50),
-    pathPoint(K2, 4500, 70),
-    // 下の谷に横並び
-    ...alongPath(K2, 6100, 6500, 3, 0),
-    // ゴールの前の縦の壁
-    ...wallAcross(K2, 8000, 3, 80),
-  ],
-  botPath: K2,
-});
+const MAP_2 = {
+  start: [308.3, 254.7],
+  startDeg: 0,
+  outer: [[301.7, 244.3], [330.0, 242.0], [344.2, 228.7], [365.8, 226.3], [366.7, 229.2], [380.0, 240.8], [402.5, 239.7], [410.0, 230.8], [421.7, 215.5], [440.0, 214.7], [448.0, 213.0], [449.2, 215.0], [460.0, 223.3], [470.3, 233.7], [471.7, 236.3], [489.7, 233.8], [493.3, 235.8], [520.3, 214.2], [521.7, 213.3], [542.5, 210.8], [547.4, 210.6], [549.8, 208.7], [552.4, 207.4], [555.3, 206.7], [558.2, 206.5], [561.2, 207.0], [564.0, 208.0], [566.5, 209.6], [568.6, 211.7], [570.3, 214.1], [571.4, 216.9], [571.9, 219.8], [571.9, 222.8], [571.2, 225.6], [570.0, 228.3], [568.2, 230.7], [566.0, 232.7], [563.5, 234.2], [560.7, 235.2], [557.7, 235.5], [554.8, 235.2], [551.9, 234.4], [549.3, 233.0], [545.0, 233.0], [524.2, 235.7], [523.0, 234.3], [496.3, 257.2], [492.5, 255.8], [467.5, 258.7], [450.8, 243.7], [449.2, 239.7], [435.0, 241.3], [431.7, 241.7], [429.2, 240.0], [410.0, 262.5], [385.0, 263.3], [380.8, 262.5], [365.0, 250.8], [364.2, 248.0], [350.8, 248.3], [339.2, 259.7], [305.8, 264.3]],
+  holes: [],
+  enemies: [[339.7, 248.0], [356.7, 236.7], [375.3, 248.3], [409.3, 248.0], [426.7, 230.8], [436.3, 220.3], [441.7, 234.7], [451.2, 226.0], [475.0, 248.7], [485.8, 247.7], [493.3, 247.0], [533.3, 216.7], [534.2, 223.3], [533.7, 231.7]],
+  rocks: [],
+  spikes: [],
+  goal: [558.3, 224.2],
+};
 
-// ===== ③ Block：細い所の石、広い所で向かってくる尖った石、ゴール前の石2つ =====
-const B3_A = [vec2(0, 0), vec2(900, 0)];
-const B3_N1 = [vec2(900, 0), vec2(1300, -150), vec2(2000, -150)];
-const B3_W = [vec2(2000, -150), vec2(2500, -350), vec2(4600, -350), vec2(5100, -150)];
-const B3_N2 = [vec2(5100, -150), vec2(5600, -450), vec2(6800, -450)];
-const STAGE_3 = courseStage({
-  label: 'STAGE 3  Block',
-  start: vec2(0, 0),
-  corridors: [
-    { points: B3_A, width: 420 },
-    { points: B3_N1, width: 220 },
-    { points: B3_W, width: 620 },
-    { points: B3_N2, width: 240 },
-  ],
-  goal: vec2(6600, -450),
-  timeLimit: 7, // 秒。半分倒したボットのタイム（9.1秒）の約3/4。道をふさぐ石を壊して戻すぶんも合わせて間に合う
-  enemies: [
-    // 入ってすぐの3体
-    vec2(450, -60),
-    vec2(550, 0),
-    vec2(650, 60),
-    // 広い所の2体
-    vec2(2900, -350),
-    vec2(3400, -250),
-  ],
-  breakables: [
-    // 細い所をふさぐ石
-    breakable(1650, -150, 'static', 71, 180),
-    // 広い所で、奥から左へ向かってくる尖った石
-    breakable(4300, -350, 'moving', 73, 180),
-    // ゴールの前の石2つ
-    breakable(6000, -450, 'static', 75, 180),
-    breakable(6300, -450, 'static', 77, 180),
-  ],
-  botPath: B3_A.concat(B3_N1.slice(1), B3_W.slice(1), B3_N2.slice(1)),
-});
+const MAP_3 = {
+  start: [316.7, 357.5],
+  startDeg: 0,
+  outer: [[311.5, 327.3], [334.4, 322.9], [343.3, 323.1], [345.8, 325.6], [363.5, 333.3], [380.6, 339.2], [384.4, 340.8], [416.7, 335.4], [423.5, 327.3], [425.6, 325.0], [449.0, 318.8], [453.1, 318.3], [469.8, 329.8], [479.2, 334.6], [480.2, 332.3], [494.8, 330.8], [526.0, 327.7], [565.6, 325.6], [568.8, 327.7], [586.5, 340.2], [611.0, 341.3], [615.6, 340.8], [649.0, 320.4], [655.4, 320.2], [658.3, 318.2], [661.6, 316.8], [665.2, 316.0], [668.9, 315.8], [672.5, 316.3], [676.0, 317.4], [679.1, 319.1], [681.7, 321.3], [683.8, 323.9], [685.1, 326.8], [685.7, 329.8], [685.5, 332.9], [684.5, 335.9], [682.8, 338.7], [680.5, 341.1], [677.6, 343.0], [674.3, 344.4], [670.7, 345.2], [667.0, 345.4], [663.3, 344.9], [659.9, 343.8], [656.8, 342.0], [652.0, 341.3], [613.5, 365.2], [611.5, 363.1], [592.7, 364.2], [590.6, 364.6], [562.5, 395.0], [559.4, 392.3], [538.5, 393.3], [494.8, 399.2], [489.6, 400.6], [476.0, 392.3], [474.4, 391.3], [461.5, 385.0], [450.0, 374.6], [438.5, 365.2], [424.0, 355.8], [422.3, 354.4], [392.7, 357.3], [380.6, 359.4], [379.8, 358.5], [354.2, 384.0], [353.1, 382.9], [315.6, 391.9]],
+  holes: [],
+  enemies: [[350.6, 344.4], [351.5, 353.3], [355.2, 361.7], [444.8, 345.4], [472.9, 358.3]],
+  rocks: [[403.5, 346.0], [622.3, 349.6], [634.8, 343.3]],
+  spikes: [[517.7, 364.8]],
+  goal: [667.3, 331.3],
+};
 
-// ===== ⑤ Block：壊す石 → 上下に分かれる道（上は石3つ、下は敵） → 合流後、向かってくる尖った石 =====
-const B5_A = [vec2(0, 0), vec2(1400, 0)];
-const B5_UP = [vec2(1400, 0), vec2(1900, -500), vec2(3600, -500), vec2(4100, 0)];
-const B5_DOWN = [vec2(1400, 0), vec2(1900, 450), vec2(3600, 450), vec2(4100, 0)];
-const B5_END = [vec2(4100, 0), vec2(4500, -200), vec2(6900, -200)];
-const STAGE_5 = courseStage({
-  label: 'STAGE 5  Block',
-  start: vec2(0, 0),
-  corridors: [
-    { points: B5_A, width: 240 },
-    { points: B5_UP, width: 260 },
-    { points: B5_DOWN, width: 400 },
-    { points: B5_END, width: 440 },
-  ],
-  goal: vec2(6700, -200),
-  timeLimit: 8, // 秒。半分倒したボットのタイム（11.0秒）の約3/4。道をふさぐ石を壊して戻すぶんも合わせて間に合う
-  enemies: [
-    // 下の道の敵
-    vec2(2300, 400),
-    vec2(2700, 500),
-    vec2(3100, 400),
-  ],
-  breakables: [
-    // 入り口の壊す石
-    breakable(900, 0, 'static', 81, 180),
-    // 上の道の石3つ
-    breakable(2300, -500, 'static', 83, 180),
-    breakable(2750, -500, 'static', 85, 180),
-    breakable(3200, -500, 'static', 87, 180),
-    // 合流した後、左へ向かってくる尖った石3つ
-    breakable(5600, -290, 'moving', 89, 180),
-    breakable(5900, -110, 'moving', 91, 180),
-    breakable(6200, -290, 'moving', 93, 180),
-  ],
-  // ボットは敵のいる下の道を通る
-  botPath: B5_A.concat(B5_DOWN.slice(1), B5_END.slice(1)),
-});
+const MAP_4 = {
+  start: [317.4, 527.1],
+  startDeg: 0,
+  outer: [[299.0, 513.6], [357.9, 499.0], [363.3, 498.3], [397.1, 452.6], [400.0, 456.0], [466.2, 445.5], [479.3, 440.2], [493.6, 445.0], [522.1, 469.8], [529.8, 478.8], [534.8, 484.8], [548.6, 478.1], [565.7, 478.5], [569.7, 454.8], [578.6, 432.8], [592.2, 413.7], [609.7, 398.8], [630.0, 388.9], [651.9, 384.7], [674.2, 386.3], [695.4, 393.7], [714.3, 406.4], [729.8, 423.7], [740.9, 444.5], [747.0, 467.7], [747.6, 491.7], [742.8, 515.1], [732.9, 536.6], [718.3, 554.9], [700.1, 568.8], [679.4, 577.5], [657.2, 580.5], [635.1, 577.6], [614.3, 569.0], [596.0, 555.2], [581.4, 537.0], [572.9, 515.0], [536.7, 524.5], [529.0, 530.0], [524.5, 532.0], [494.8, 566.2], [493.6, 564.0], [427.4, 571.2], [420.9, 569.8], [376.9, 546.7], [375.7, 540.7], [307.9, 557.4]],
+  holes: [],
+  enemies: [[398.3, 518.6], [418.1, 515.2], [436.9, 512.1]],
+  rocks: [[545.0, 500.0]],
+  spikes: [],
+  room: { center: [657.0, 482.5], radius: 91.0 },
+  gate: [[565.7, 478.5], [572.9, 515.0]],
+};
 
-// ===== ⑦：くねくねの道。U字の折り返しに敵と石 =====
-const W7 = [vec2(0, 0), vec2(900, 0), vec2(1500, -400), vec2(2000, -400), vec2(2000, 1100),
-  vec2(2600, 1100), vec2(2600, 200), vec2(3200, 200), vec2(3200, 1500)];
-const STAGE_7 = courseStage({
-  label: 'STAGE 7',
-  start: vec2(0, 0),
-  corridors: [
-    { points: W7, width: 300 },
-  ],
-  goal: vec2(3200, 1300),
-  timeLimit: 8, // 秒。何も倒さず壊さずに泳いだボットのタイム（10.3秒）の約3/4
-  enemies: [
-    pathPoint(W7, 700, 0),
-    pathPoint(W7, 1400, 0),
-    // 下りの道とU字の底
-    pathPoint(W7, 2600, 50),
-    pathPoint(W7, 3100, -50),
-    pathPoint(W7, 3700, 0),
-    pathPoint(W7, 4000, 0),
-    // 上りの道
-    pathPoint(W7, 4500, 50),
-    pathPoint(W7, 5000, -50),
-    // 最後の下り
-    pathPoint(W7, 6200, 0),
-    pathPoint(W7, 6600, 0),
-  ],
-  breakables: [
-    // U字のまわりの石。道の片側に寄せて置く（よけるか、回転で割る）
-    breakable(pathPoint(W7, 2900, -70).x, pathPoint(W7, 2900, -70).y, 'static', 101, 180),
-    breakable(pathPoint(W7, 3850, 70).x, pathPoint(W7, 3850, 70).y, 'static', 103, 180),
-    breakable(pathPoint(W7, 4750, -70).x, pathPoint(W7, 4750, -70).y, 'static', 105, 180),
-    breakable(pathPoint(W7, 5600, 70).x, pathPoint(W7, 5600, 70).y, 'static', 107, 180),
-  ],
-  botPath: W7,
-});
+const MAP_5 = {
+  start: [334.5, 694.0],
+  startDeg: 0,
+  outer: [[316.7, 681.7], [404.8, 666.7], [444.8, 663.6], [450.0, 658.3], [481.0, 632.1], [507.1, 625.0], [535.0, 616.7], [580.2, 604.8], [594.5, 618.6], [635.0, 612.4], [658.8, 604.3], [685.0, 602.9], [713.6, 600.5], [723.0, 603.6], [748.0, 602.0], [748.0, 625.0], [746.9, 625.0], [705.2, 646.4], [699.3, 644.8], [643.3, 650.0], [605.2, 657.6], [606.4, 660.0], [583.8, 691.7], [570.0, 733.0], [535.0, 742.9], [527.4, 738.1], [523.8, 735.2], [503.6, 719.0], [495.2, 717.9], [481.0, 711.9], [461.9, 703.6], [448.8, 692.9], [447.6, 691.0], [319.0, 711.9]],
+  holes: [[[466.7, 664.3], [465.5, 666.0], [470.2, 688.1], [473.8, 690.5], [490.5, 697.6], [504.8, 708.3], [509.5, 688.1], [515.5, 677.4], [535.0, 671.4], [550.0, 664.8], [558.8, 673.8], [570.7, 677.4], [594.5, 657.4], [604.0, 639.8], [599.3, 640.0], [570.7, 623.3], [535.0, 631.0], [521.4, 633.3], [492.9, 640.5]]],
+  enemies: [[535.7, 688.1], [526.2, 710.7], [544.5, 721.4]],
+  rocks: [[413.8, 680.5], [475.0, 648.8], [514.3, 629.8], [528.6, 626.2], [540.0, 626.0]],
+  spikes: [[672.6, 614.3], [663.1, 628.6], [677.9, 630.5]],
+  goal: [733.8, 617.9],
+};
 
-// ===== ⑨ Semi final：下から上へ上る広い道。敵と石。右上に別ルートの横道（今は行き止まり） =====
-// スタート演出は横から泳いでくるので、最初だけ横の細い道にして、すぐ上へ曲がる
-const S9_IN = [vec2(0, 0), vec2(500, 0), vec2(500, -400)];
-const S9_UP = [vec2(500, -400), vec2(500, -3700)];
-// 別ルートの横道。隠しステージやカニ戦への入り口にする予定。今は奥で行き止まり
-const S9_SIDE = [vec2(500, -3400), vec2(1500, -3600)];
-const STAGE_9 = courseStage({
-  label: 'STAGE 9  Semi final',
-  start: vec2(0, 0),
-  corridors: [
-    { points: S9_IN, width: 260 },
-    { points: S9_UP, width: 700 },
-    { points: S9_SIDE, width: 240 },
-  ],
-  goal: vec2(500, -3550),
-  timeLimit: 5, // 秒。1体も倒さずに泳いだボットのタイム（6.7秒）の約3/4
-  enemies: [
-    vec2(380, -900),
-    vec2(640, -1050),
-    vec2(420, -1500),
-    vec2(650, -1800),
-    vec2(350, -2200),
-    vec2(600, -2450),
-    vec2(480, -2900),
-  ],
-  breakables: [
-    breakable(560, -1300, 'static', 111, 180),
-    breakable(380, -1900, 'static', 113, 180),
-    breakable(640, -2650, 'static', 115, 180),
-    breakable(450, -3150, 'static', 117, 180),
-  ],
-  botPath: S9_IN.concat(S9_UP.slice(1)),
-});
+const MAP_6 = {
+  start: [384.3, 854.3],
+  startDeg: 0,
+  outer: [[369.5, 843.6], [416.0, 830.0], [420.0, 829.3], [445.2, 791.7], [448.1, 794.0], [499.3, 783.6], [510.5, 778.6], [521.9, 782.1], [544.5, 800.0], [555.2, 811.9], [566.7, 806.9], [581.0, 804.0], [583.4, 784.9], [590.0, 766.9], [600.5, 751.3], [614.2, 738.8], [630.2, 730.3], [647.7, 726.3], [665.5, 727.0], [682.7, 732.3], [698.1, 742.0], [710.9, 755.5], [720.3, 771.9], [725.7, 790.4], [726.9, 809.6], [723.7, 828.6], [716.3, 846.2], [705.2, 861.4], [691.0, 873.1], [674.6, 880.8], [657.0, 883.9], [639.2, 882.4], [622.3, 876.2], [607.3, 865.7], [595.1, 851.6], [588.0, 834.0], [560.0, 842.0], [551.2, 852.1], [527.9, 878.1], [525.5, 878.1], [471.9, 884.8], [466.0, 884.0], [433.8, 867.4], [431.4, 862.6], [378.6, 878.1]],
+  holes: [],
+  enemies: [[449.3, 844.0], [463.6, 841.7], [479.8, 837.1]],
+  rocks: [[564.8, 822.4]],
+  spikes: [],
+  room: { center: [654.0, 805.0], radius: 73.0 },
+  gate: [[581.0, 804.0], [588.0, 834.0]],
+};
 
-// ボス戦の部屋の中心。部屋の上端が y=0、左端が通路の右端になる位置
-const BOSS_ROOM_CENTER = vec2(
-  CONFIG.BOSS_CORRIDOR_LENGTH + CONFIG.BOSS_ROOM_RADIUS,
-  CONFIG.BOSS_ROOM_RADIUS
-);
+const MAP_7 = {
+  start: [390.0, 952.5],
+  startDeg: 0,
+  outer: [[382.5, 943.6], [424.2, 932.2], [427.0, 933.9], [458.9, 965.6], [461.7, 964.4], [510.3, 953.3], [513.1, 955.3], [521.4, 993.3], [525.6, 991.4], [543.6, 987.8], [564.4, 993.3], [575.6, 1006.7], [579.7, 1033.1], [582.5, 1034.4], [603.3, 1029.7], [614.4, 1033.1], [621.4, 1053.9], [628.3, 1077.5], [636.7, 1109.4], [643.6, 1138.6], [610.3, 1141.4], [600.6, 1109.4], [595.0, 1087.2], [594.4, 1059.4], [590.8, 1049.7], [583.9, 1047.8], [570.0, 1050.6], [563.1, 1058.1], [561.1, 1076.1], [550.6, 1099.7], [536.7, 1110.8], [508.9, 1117.8], [492.2, 1112.8], [479.7, 1099.7], [474.2, 1070.6], [476.1, 1060.8], [483.9, 1048.3], [492.2, 1031.7], [500.6, 1003.9], [499.2, 979.4], [492.2, 976.1], [447.8, 985.0], [436.7, 973.9], [420.0, 963.6], [383.3, 967.8]],
+  holes: [[[521.4, 1010.3], [506.1, 1028.9], [493.6, 1051.1], [488.9, 1067.2], [490.8, 1092.8], [500.6, 1101.7], [514.4, 1106.1], [536.7, 1100.6], [546.4, 1090.0], [550.0, 1070.6], [553.3, 1055.3], [560.3, 1040.6], [564.4, 1038.6], [561.7, 1028.9], [554.7, 1017.8], [543.6, 1009.4], [531.1, 1006.1], [522.2, 1009.4]]],
+  enemies: [[439.4, 963.6], [504.7, 1015.0], [499.4, 1027.5], [489.4, 1049.7], [483.9, 1081.7], [500.6, 1107.2], [542.2, 1103.3], [556.7, 1072.8], [603.3, 1067.8], [606.1, 1095.6], [624.2, 1100.6], [623.3, 1083.1]],
+  rocks: [[506.1, 965.6], [542.2, 1000.3], [558.9, 1005.3], [569.4, 1021.9], [520.0, 1108.9]],
+  spikes: [],
+  goal: [626.9, 1135.8],
+};
 
-// ボス戦の部屋の柱。部屋の中心のまわりに等間隔に置く
-function bossRoomPillars() {
-  const list = [];
-  for (let i = 0; i < CONFIG.BOSS_ROOM_PILLAR_COUNT; i++) {
-    const ang = (CONFIG.BOSS_ROOM_PILLAR_START_DEG + 360 / CONFIG.BOSS_ROOM_PILLAR_COUNT * i) * Math.PI / 180;
-    list.push(rockPolygon(
-      BOSS_ROOM_CENTER.x + Math.cos(ang) * CONFIG.BOSS_ROOM_PILLAR_DIST,
-      BOSS_ROOM_CENTER.y + Math.sin(ang) * CONFIG.BOSS_ROOM_PILLAR_DIST,
-      CONFIG.BOSS_ROOM_PILLAR_RADIUS, 6, 0
-    ));
-  }
-  return list;
+const MAP_8 = {
+  start: [717.5, 944.2],
+  startDeg: 73,
+  outer: [[694.6, 937.9], [709.2, 985.2], [692.0, 991.0], [679.1, 1003.1], [669.7, 1017.8], [664.5, 1034.2], [663.8, 1051.2], [667.5, 1067.9], [675.5, 1083.3], [687.3, 1096.3], [702.2, 1106.3], [719.3, 1112.7], [737.6, 1115.0], [755.9, 1113.1], [773.1, 1107.2], [788.3, 1097.5], [800.4, 1084.7], [808.9, 1069.5], [813.1, 1052.9], [812.8, 1035.9], [808.0, 1019.4], [799.1, 1004.5], [786.5, 992.1], [771.0, 982.9], [753.6, 977.4], [735.2, 975.8], [740.4, 973.8], [727.5, 929.6]],
+  holes: [],
+  enemies: [],
+  rocks: [],
+  spikes: [],
+  room: { center: [738.5, 1045.5], radius: 69.5 },
+  gate: [[709.2, 985.2], [735.2, 975.8]],
+};
+
+const MAP_9 = {
+  start: [494.4, 1405.0],
+  startDeg: -100,
+  outer: [[488.5, 1413.3], [483.3, 1383.8], [476.9, 1382.6], [456.4, 1372.3], [451.3, 1363.3], [441.0, 1335.1], [432.1, 1299.2], [424.4, 1255.6], [417.9, 1217.2], [415.9, 1197.9], [415.9, 1178.7], [420.5, 1158.2], [430.8, 1147.9], [455.1, 1140.8], [461.5, 1141.5], [469.2, 1149.2], [474.4, 1158.0], [475.6, 1160.8], [519.2, 1153.6], [521.0, 1154.0], [521.0, 1168.0], [476.9, 1176.2], [476.9, 1178.7], [482.0, 1212.0], [489.7, 1253.1], [496.2, 1295.4], [498.7, 1314.6], [505.1, 1340.3], [515.4, 1360.8], [517.9, 1364.6], [494.9, 1383.8], [502.6, 1410.8]],
+  holes: [],
+  enemies: [[471.8, 1248.0], [445.6, 1259.0], [486.7, 1297.2], [454.4, 1310.8], [492.3, 1324.4], [462.8, 1348.0]],
+  rocks: [[455.1, 1221.0], [474.4, 1281.8], [454.4, 1288.7], [471.8, 1323.6]],
+  spikes: [],
+  goal: [450.0, 1203.8],
+};
+
+const MAP_10 = {
+  start: [574.5, 1252.1],
+  startDeg: -8,
+  outer: [[556.7, 1238.3], [646.0, 1224.8], [644.8, 1223.6], [650.7, 1208.1], [663.8, 1191.4], [682.9, 1180.7], [706.7, 1172.9], [730.5, 1170.5], [749.5, 1173.6], [761.4, 1181.9], [769.8, 1198.6], [772.9, 1220.0], [770.5, 1239.0], [763.8, 1251.0], [747.1, 1262.9], [725.7, 1272.4], [701.9, 1279.0], [682.9, 1280.0], [671.0, 1276.0], [662.6, 1267.6], [654.3, 1252.1], [651.4, 1246.2], [649.5, 1249.3], [562.6, 1265.2]],
+  holes: [],
+  enemies: [],
+  rocks: [],
+  spikes: [],
+  room: { center: [712.0, 1225.0], radius: 52.0 },
+  gate: [[646.0, 1224.8], [649.5, 1249.3]],
+};
+
+// 地図の座標を、スタート（○）を原点にしたゲームの座標に直す
+function mapPoint(def, p) {
+  return vec2((p[0] - def.start[0]) * CONFIG.MAP_SCALE, (p[1] - def.start[1]) * CONFIG.MAP_SCALE);
 }
 
-// ボス戦のステージを作る。形（通路 → 丸い部屋）は4つとも同じで、名前と通路の敵・石だけを変える。
-// ボスは今は4つとも同じ（仮置き）。サメ・フグ・タコ・深海魚に差し替える時に、ここに種類を足す。
-// 地図の⑧（上から降りて入る）と⑩（暗闇）の形は、ボスを作る時に合わせる
-function bossStage(def) {
-  let breakables = [];
-  if (def.breakables) {
-    breakables = def.breakables;
+// 輪の向き（面積の符号）。外側の縁と島の縁を逆回りにそろえると、ふつうの塗り方で島が抜ける
+function ringArea(ring) {
+  let a = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i];
+    const q = ring[(i + 1) % ring.length];
+    a += p.x * q.y - q.x * p.y;
   }
-  return {
-    type: 'boss',
-    label: def.label,
-    startPos: vec2(CONFIG.BOSS_STAGE_START_X, BOSS_ROOM_CENTER.y),
-    width: BOSS_ROOM_CENTER.x + CONFIG.BOSS_ROOM_RADIUS,
-    height: CONFIG.BOSS_ROOM_RADIUS * 2,
-    roomCenter: BOSS_ROOM_CENTER,
-    roomRadius: CONFIG.BOSS_ROOM_RADIUS,
-    corridorTop: BOSS_ROOM_CENTER.y - CONFIG.BOSS_CORRIDOR_HEIGHT / 2,
-    corridorBottom: BOSS_ROOM_CENTER.y + CONFIG.BOSS_CORRIDOR_HEIGHT / 2,
-    // 部屋の柱。回り込みながら雑魚を拾って速さを溜める
-    rocks: bossRoomPillars(),
-    enemies: def.enemies,
-    breakables: breakables,
+  return a / 2;
+}
+
+// 地図のステージを組み立てる。opts = { label, type: 'zako' | 'boss', timeLimit, botPath }
+function mapStage(def, opts) {
+  const startAngle = def.startDeg * Math.PI / 180;
+  const dir = vec2(Math.cos(startAngle), Math.sin(startAngle));
+  // スタート演出で泳いでくる助走の長さ。スタートの口から、進む向きと逆へ伸ばす
+  const introTime = CONFIG.INTRO_ENTER_TIME + CONFIG.COUNTDOWN_FROM * CONFIG.COUNTDOWN_STEP;
+  const runway = CONFIG.INTRO_SPEED * introTime + CONFIG.RUNWAY_WALL_MARGIN;
+  const outer = def.outer.map(function (p) { return mapPoint(def, p); });
+  const first = outer[0];
+  const last = outer[outer.length - 1];
+  outer.push(vec2(last.x - dir.x * runway, last.y - dir.y * runway));
+  outer.push(vec2(first.x - dir.x * runway, first.y - dir.y * runway));
+  const holes = def.holes.map(function (h) { return h.map(function (p) { return mapPoint(def, p); }); });
+  // 外側の縁は正の向き、島は負の向きにそろえる
+  if (ringArea(outer) < 0) {
+    outer.reverse();
+  }
+  for (const h of holes) {
+    if (ringArea(h) > 0) {
+      h.reverse();
+    }
+  }
+  const water = [outer].concat(holes);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of outer) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const margin = CONFIG.COURSE_VIEW_MARGIN;
+  const stage = {
+    type: opts.type,
+    label: opts.label,
+    startPos: vec2(0, 0),
+    startAngleDeg: def.startDeg,
+    water: water,
+    left: minX - margin,
+    top: minY - margin,
+    width: maxX + margin,
+    height: maxY + margin,
+    timeLimit: opts.timeLimit,
+    rocks: [],
+    enemies: def.enemies.map(function (p) { return mapPoint(def, p); }),
+    breakables: [],
+    botPath: null,
   };
+  let seed = 0;
+  for (const p of def.rocks) {
+    const w = mapPoint(def, p);
+    stage.breakables.push(breakable(w.x, w.y, 'static', ++seed, 180));
+  }
+  for (const p of def.spikes) {
+    const w = mapPoint(def, p);
+    stage.breakables.push(breakable(w.x, w.y, 'moving', ++seed, 180));
+  }
+  if (def.goal) {
+    stage.goalPos = mapPoint(def, def.goal);
+    stage.goalRadius = CONFIG.ZAKO_GOAL_RADIUS;
+  }
+  if (def.room) {
+    // ボスの部屋。ボスが動き回る範囲と、雑魚が湧く範囲に使う円（部屋の中にすっぽり入る大きさ）
+    stage.roomCenter = mapPoint(def, def.room.center);
+    stage.roomRadius = def.room.radius * CONFIG.MAP_SCALE;
+    // 部屋の入口の線。魚が部屋に入りきったら、ここをふさぐ
+    stage.gate = [mapPoint(def, def.gate[0]), mapPoint(def, def.gate[1])];
+  }
+  if (opts.botPath) {
+    stage.botPath = opts.botPath.map(function (p) { return mapPoint(def, p); });
+  }
+  return stage;
 }
 
-// 地図の④⑥⑩：通路に敵3体、部屋の入り口に石
-function bossCorridorEnemies() {
-  return line(700, BOSS_ROOM_CENTER.y, 3, 120);
-}
-function bossEntranceRock(seed) {
-  return [breakable(1400, BOSS_ROOM_CENTER.y, 'static', seed, 180)];
-}
+// ボットの通り道（検証用。地図の座標）。ゲームの挙動には使わない
+const BOT_1 = [[304, 190], [330, 189], [340, 180], [360, 180], [372, 188], [397, 186], [398, 165], [422, 161]];
+const BOT_2 = [[308, 255], [333, 252], [350, 238], [367, 238], [380, 252], [400, 251], [415, 229], [425, 222], [446, 224], [465, 240], [490, 246], [506, 234], [525, 224], [545, 222], [557, 222]];
+const BOT_3 = [[317, 357], [350, 350], [370, 350], [384, 350], [420, 346], [440, 342], [470, 350], [520, 350], [560, 355], [585, 352], [612, 353], [640, 338], [667, 331]];
+const BOT_5 = [[334, 694], [440, 680], [455, 680], [470, 700], [500, 713], [530, 715], [565, 710], [585, 670], [620, 640], [700, 625], [733, 618]];
+const BOT_7 = [[390, 952], [425, 947], [460, 975], [505, 965], [510, 990], [500, 1005], [497, 1020], [488, 1050], [482, 1075], [488, 1105], [510, 1112], [540, 1106], [553, 1090], [557, 1070], [565, 1048], [585, 1040], [605, 1045], [612, 1080], [622, 1110], [627, 1135]];
+const BOT_9 = [[494, 1405], [490, 1385], [470, 1350], [460, 1300], [455, 1250], [450, 1204]];
 
-// ステージの一覧。上から順に遊ぶ。ゲームの処理は1本で、type で違うところ（クリア条件・外枠の壁）だけを分ける
-// 共通の項目: type, label, startPos（GO! の瞬間の位置）, width / height（カメラが映せる範囲）,
-//   enemies（最初からいる雑魚）, rocks（中の岩。当たると滑る）
+// ステージの一覧。上から順に遊ぶ。ゲームの処理は1本で、type で違うところ（クリア条件）だけを分ける
+// ボスは今は4つとも同じ（仮置き）。サメ・フグ・タコ・深海魚に差し替える時に、ここに種類を足す
 const STAGES = [
-  STAGE_1,
-  STAGE_2,
-  STAGE_3,
-  bossStage({ label: 'STAGE 4  Boss 1', enemies: bossCorridorEnemies(), breakables: bossEntranceRock(121) }),
-  STAGE_5,
-  bossStage({ label: 'STAGE 6  Boss 2', enemies: bossCorridorEnemies(), breakables: bossEntranceRock(123) }),
-  STAGE_7,
-  bossStage({ label: 'STAGE 8  Boss 3', enemies: bossCorridorEnemies(), breakables: bossEntranceRock(125) }),
-  STAGE_9,
-  bossStage({ label: 'STAGE 10  Last boss', enemies: bossCorridorEnemies(), breakables: bossEntranceRock(127) }),
+  mapStage(MAP_1, { label: 'STAGE 1  Move', type: 'zako', timeLimit: 6, /* 秒。敵も石もないので、ボットのクリアタイム（4.0秒）の約1.5倍のふつうの制限時間 */ botPath: BOT_1 }),
+  mapStage(MAP_2, { label: 'STAGE 2  Kill', type: 'zako', timeLimit: 6, /* 秒。1体も倒さずに泳いだボットのタイム（7.5秒）の約3/4。倒して戻すぶんがないと間に合わない */ botPath: BOT_2 }),
+  mapStage(MAP_3, { label: 'STAGE 3  Block', type: 'zako', timeLimit: 7.5, /* 秒。何も倒さず壊さずに泳いだボットのタイム（10.0秒）の約3/4 */ botPath: BOT_3 }),
+  mapStage(MAP_4, { label: 'STAGE 4  Boss 1', type: 'boss', timeLimit: null }),
+  mapStage(MAP_5, { label: 'STAGE 5  Block', type: 'zako', timeLimit: 11, /* 秒。何も倒さず壊さずに泳いだボットのタイム（14.7秒）の約3/4 */ botPath: BOT_5 }),
+  mapStage(MAP_6, { label: 'STAGE 6  Boss 2', type: 'boss', timeLimit: null }),
+  mapStage(MAP_7, { label: 'STAGE 7', type: 'zako', timeLimit: 8, /* 秒。全部倒したボットのタイム（10.5秒）の約3/4。何もしないと石で止まって進めない */ botPath: BOT_7 }),
+  mapStage(MAP_8, { label: 'STAGE 8  Boss 3', type: 'boss', timeLimit: null }),
+  mapStage(MAP_9, { label: 'STAGE 9  Semi final', type: 'zako', timeLimit: 4.5, /* 秒。何も倒さず壊さずに泳いだボットのタイム（6.0秒）の約3/4 */ botPath: BOT_9 }),
+  mapStage(MAP_10, { label: 'STAGE 10  Last boss', type: 'boss', timeLimit: null }),
 ];
 
 // ステージの左端。カウントダウン中も画面の中を泳げるよう、GO! の位置より左に助走の区間を取る。
 // 数値で持たずに計算するので、開始位置やカウントダウンの長さを変えても自動でついてくる
 function stageLeftOf(stage) {
+  // 地図のステージは、泳げる場所（助走の区間を含む）から計算した左端を使う
+  if (stage.left !== undefined) {
+    return stage.left;
+  }
   const countdownStartX = stage.startPos.x - CONFIG.INTRO_SPEED * CONFIG.COUNTDOWN_FROM * CONFIG.COUNTDOWN_STEP;
   return countdownStartX - CONFIG.INTRO_VISIBLE_MARGIN;
 }
@@ -1424,6 +1403,22 @@ function clamp(v, lo, hi) {
     return hi;
   }
   return v;
+}
+
+// 点 p が地図のステージの泳げる場所（外側の縁の中で、島の外）にあるか。縁を横切る回数の偶奇で見る。
+// ゲームの処理（体を押し戻す）と描く側（海藻の向き）の両方で使う
+function insideWater(p, water) {
+  let inside = false;
+  for (const ring of water) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const a = ring[i];
+      const b = ring[j];
+      if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) {
+        inside = !inside;
+      }
+    }
+  }
+  return inside;
 }
 
 function dist(a, b) {
@@ -1500,10 +1495,15 @@ function createGame() {
     state.introTime = 0;       // 秒。スタート演出が始まってからの実時間
     state.goAt = -1;           // GO! になった時の実時間。GO! の表示を出す時間を測る
 
+    // 開始時の向き。地図のステージはステージごとに持つ（⑧は上から、⑨は下から入る）
+    let startDeg = CONFIG.START_ANGLE_DEG;
+    if (stage.startAngleDeg !== undefined) {
+      startDeg = stage.startAngleDeg;
+    }
     state.fish = {
       pos: vec2(stage.startPos.x, stage.startPos.y),
-      angle: CONFIG.START_ANGLE_DEG * DEG, // 魚の向き（頭の向き）。正面の判定と見た目に使う
-      moveAngle: CONFIG.START_ANGLE_DEG * DEG, // 進む向き。ふだんは angle と同じ。ドリフト中だけ押した瞬間の向きのまま残して横滑りする
+      angle: startDeg * DEG, // 魚の向き（頭の向き）。正面の判定と見た目に使う
+      moveAngle: startDeg * DEG, // 進む向き。ふだんは angle と同じ。ドリフト中だけ押した瞬間の向きのまま残して横滑りする
       inputSpeed: 0,           // 入力で積んだぶん。上限あり。向きを合わせた入力が途切れると、保ったあと減っていく
       inputHold: CONFIG.INPUT_HOLD_TIME, // 入力ぶんが減り始めるまでの残り時間。向きを合わせている間は毎フレーム満タンに戻る
       inputDecayFrom: 0,       // 減り始めた時点の入力ぶん。これを INPUT_DECAY_TIME で割った速さで減らす。0なら減っていない
@@ -2724,11 +2724,98 @@ function createGame() {
     pos.y = bestQ.y + (pos.y - bestQ.y) / d * bestLimit;
   }
 
+
+  // 縁の上で p にいちばん近い点
+  function nearestOnWater(p, water) {
+    let best = null;
+    let bestD = Infinity;
+    for (const ring of water) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[j];
+        const b = ring[i];
+        const ex = b.x - a.x;
+        const ey = b.y - a.y;
+        const len2 = ex * ex + ey * ey;
+        let t = 0;
+        if (len2 > 0) {
+          t = clamp(((p.x - a.x) * ex + (p.y - a.y) * ey) / len2, 0, 1);
+        }
+        const qx = a.x + ex * t;
+        const qy = a.y + ey * t;
+        const d = Math.hypot(p.x - qx, p.y - qy);
+        if (d < bestD) {
+          bestD = d;
+          best = vec2(qx, qy);
+        }
+      }
+    }
+    return { point: best, dist: bestD };
+  }
+
+  // 地図のステージの泳げる場所に戻す。体（半径 r）が縁にめり込んでいたら、縁から r 離れた所まで押し戻す。
+  // 外に出ていたら、いちばん近い縁の点から内側へ r の所に戻す（壁に沿って滑る。ペナルティなし）。
+  // へこんだ角では、押した先が別の縁にめり込むことがあるので、何回か繰り返す
+  function clampToWater(pos, water, r) {
+    for (let k = 0; k < CONFIG.WATER_CLAMP_PASSES; k++) {
+      const n = nearestOnWater(pos, water);
+      if (n.point === null) {
+        return;
+      }
+      const inside = insideWater(pos, water);
+      if (inside && n.dist >= r) {
+        return;
+      }
+      let ux = pos.x - n.point.x;
+      let uy = pos.y - n.point.y;
+      if (n.dist > 0) {
+        ux /= n.dist;
+        uy /= n.dist;
+      }
+      // 外にいる時は、縁の点から見て自分と反対側（水の側）へ出す
+      if (!inside) {
+        ux = -ux;
+        uy = -uy;
+      }
+      pos.x = n.point.x + ux * r;
+      pos.y = n.point.y + uy * r;
+    }
+  }
+
+  // ボスの部屋の入口の線より部屋の側に、体（半径 r）を置いておく
+  function keepInsideGate(pos, stage, r) {
+    const a = stage.gate[0];
+    const b = stage.gate[1];
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const len = Math.hypot(ex, ey);
+    // 線の法線のうち、部屋の中心の側を向く方
+    let nx = -ey / len;
+    let ny = ex / len;
+    if ((stage.roomCenter.x - a.x) * nx + (stage.roomCenter.y - a.y) * ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const d = (pos.x - a.x) * nx + (pos.y - a.y) * ny;
+    if (d < r) {
+      pos.x += nx * (r - d);
+      pos.y += ny * (r - d);
+    }
+  }
+
   // 外枠（雑魚戦はステージの長方形、ボス戦は通路と部屋の円）の外に出ていたら戻す
   function clampToBounds(pos) {
     const stage = currentStage();
     const r = CONFIG.FISH_RADIUS;
     const left = stageLeftOf(stage);
+    if (stage.water) {
+      clampToWater(pos, stage.water, r);
+      // ボスの部屋の入口がふさがったら、入口の線から部屋の外へ出さない
+      if (stage.gate && state.roomClosed) {
+        keepInsideGate(pos, stage, r);
+        clampToWater(pos, stage.water, r);
+      }
+      return;
+    }
     if (stage.corridors) {
       clampToCorridors(pos, stage.corridors, r);
       return;
@@ -4497,6 +4584,10 @@ function createRenderer(game, canvas) {
   // 泳げる場所の形のパス。雑魚戦は長方形、ボス戦は通路の長方形と部屋の円を合わせた形（重なりも塗れるよう同じ回り方で描く）
   function stageShapePath(stage, left) {
     ctx.beginPath();
+    if (stage.water) {
+      waterPath(stage.water);
+      return;
+    }
     if (stage.corridors) {
       corridorPath(stage.corridors, 0);
       return;
@@ -4513,6 +4604,17 @@ function createRenderer(game, canvas) {
 
   // 水路の形のパス。区間ごとの長方形と、点ごとの円を、全部同じ回り方（時計回り）で足す。重なりも塗れる。
   // extra は幅に足す量（縁取りを下に敷くために、少し太い形を作る時に使う）
+  // 地図のステージの泳げる場所の形のパス。外側の縁と島の縁は逆回りにしてあるので、ふつうの塗り方で島が抜ける
+  function waterPath(water) {
+    for (const ring of water) {
+      ctx.moveTo(ring[0].x, ring[0].y);
+      for (let i = 1; i < ring.length; i++) {
+        ctx.lineTo(ring[i].x, ring[i].y);
+      }
+      ctx.closePath();
+    }
+  }
+
   function corridorPath(corridors, extra) {
     for (const c of corridors) {
       const hw = c.width / 2 + extra;
@@ -5183,6 +5285,7 @@ function createRenderer(game, canvas) {
     return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
   }
 
+
   // 水路の形の中（どこかの水路の幅の内側）にあるか
   function insideCorridors(p, corridors, margin) {
     for (const c of corridors) {
@@ -5226,7 +5329,31 @@ function createRenderer(game, canvas) {
       }
       list.push({ pos: p, angle: Math.atan2(ny, nx), blades: items });
     }
-    if (stage.corridors) {
+    if (stage.water) {
+      // 地図のステージ：縁の各辺に間隔をあけて並べる。水の側は、辺の少し内側が泳げる場所かどうかで決める
+      for (const ring of stage.water) {
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const a = ring[j];
+          const b = ring[i];
+          const len = Math.hypot(b.x - a.x, b.y - a.y);
+          if (len === 0) {
+            continue;
+          }
+          const ux = (b.x - a.x) / len;
+          const uy = (b.y - a.y) / len;
+          let nx = -uy;
+          let ny = ux;
+          const mid = vec2((a.x + b.x) / 2 + nx * CONFIG.SEAWEED_SIDE_PROBE, (a.y + b.y) / 2 + ny * CONFIG.SEAWEED_SIDE_PROBE);
+          if (!insideWater(mid, stage.water)) {
+            nx = -nx;
+            ny = -ny;
+          }
+          for (let d = rnd() * CONFIG.SEAWEED_SPACING; d < len; d += CONFIG.SEAWEED_SPACING) {
+            tryAdd(vec2(a.x + ux * d, a.y + uy * d), nx, ny);
+          }
+        }
+      }
+    } else if (stage.corridors) {
       // 水路の各区間の両側の縁に、間隔をあけて並べる。曲がり角などで、ほかの水路の水の中に入ってしまう点は飛ばす
       for (const c of stage.corridors) {
         const hw = c.width / 2;
@@ -5768,6 +5895,22 @@ function createRenderer(game, canvas) {
       beginWorld(mainCtx, scale);
     }
     // 泳げる場所だけを水で塗る
+    if (stage.water) {
+      // 地図のステージの縁。泳げる場所の形を太い線でなぞって、壁側のぼかし → 明るい縁 と敷いてから水を塗る
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = CONFIG.WALL_GLOW_ALPHA;
+      ctx.beginPath();
+      waterPath(stage.water);
+      ctx.strokeStyle = colors.wallGlow;
+      ctx.lineWidth = CONFIG.WALL_GLOW_WIDTH * 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      waterPath(stage.water);
+      ctx.strokeStyle = colors.wallEdge;
+      ctx.lineWidth = CONFIG.WALL_EDGE_WIDTH * 2;
+      ctx.stroke();
+    }
     if (stage.corridors) {
       // 水路の縁。太い形から順に、壁側のぼかし → 明るい縁 と敷いてから水を塗る。
       // 全部の水路の縁を先に敷くので、曲がり角の継ぎ目に線が出ない
@@ -5865,7 +6008,18 @@ function createRenderer(game, canvas) {
     drawSeaweed(stage, camX, camY, viewW, viewH, state.realTime);
 
     // ボス戦の外枠の縁取り（壁の一部）
-    if (stage.type !== 'zako') {
+    if (stage.water) {
+      // 地図のボス戦：入口がふさがったら、入口の線をゴールの色で描いて閉じたことを見せる
+      if (stage.gate && state.roomClosed) {
+        ctx.strokeStyle = colors.goal;
+        ctx.lineWidth = CONFIG.GATE_WIDTH;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(stage.gate[0].x, stage.gate[0].y);
+        ctx.lineTo(stage.gate[1].x, stage.gate[1].y);
+        ctx.stroke();
+      }
+    } else if (stage.type !== 'zako') {
       drawBossWalls(stage, left, layerScale, state.roomClosed);
     }
     // ぶつかる相手（ゴール・ひび割れ岩・雑魚・ボス）も、ドット絵の層に描く
