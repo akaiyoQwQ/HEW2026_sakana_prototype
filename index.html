@@ -312,7 +312,7 @@
 <div class="title-screen" id="titleScreen">
   <div class="title-panel">
     <h1>さかな</h1>
-    <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全6ステージ。STAGE 5 は奥の部屋で待つ大物を倒せばクリア、それ以外は奥にある光る目標にたどり着けばクリア。制限時間を過ぎると水路が崩れてやり直し。タイムが短いほどいい記録。</p>
+    <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全10ステージ。STAGE 4・6・8・10 は奥の部屋で待つ大物を倒せばクリア、それ以外は奥にある光る目標にたどり着けばクリア。敵を倒したり岩を壊したりすると時間が延びる。制限時間を過ぎると水路が崩れてやり直し。タイムが短いほどいい記録。</p>
     <h2>操作</h2>
     <ul>
       <li><span class="key">マウスカーソル</span>の方へ、魚はいつも少しずつ向きを変える（<span class="key">矢印キー / WASD</span> を押している間はそちらが優先）</li>
@@ -423,6 +423,7 @@ const CONFIG = {
   SCORE_RANK_B: 0.1,            // 割合。B の下限。これ未満は C
   SCORE_KILL_REFILL: 1.0,       // 秒。体当たり・角で1体倒すごとにゲージ（＝のこり時間）を戻す量。満タンは超えない
   SCORE_KILL_REFILL_SPIN: 1.0,  // 秒。回転で1体倒した時に戻す量。最初は同じ。回転を得にしたくなったらここを上げる
+  SCORE_ROCK_REFILL: 1.0,       // 秒。ひび割れ岩（置き岩・迫り岩）を1つ壊すごとに戻す量。敵を倒した時と同じ
   BOSS_SCORE_TIME: 30,          // 秒。ボス戦（制限時間なし）のゲージの長さ。ボス戦を通しで走るボットがまだないので仮の値
   SCORE_GAUGE_SIZE: vec2(480, 14), // px。ゲージの幅と高さ
   SCORE_GAUGE_POS_Y: 24,        // px。画面の上からゲージの上端までの距離
@@ -1115,168 +1116,200 @@ function courseStage(def) {
   };
 }
 
-// ===== STAGE 1: 正しい方向に進む =====
-// 敵は置かない。ゆるいカーブ → 上下に曲がる道 → 直角に上へ。まっすぐな区間で「向ききると速くなる」を体感させる。1本道
-const S1_A = [vec2(0, 0), vec2(1600, 0), vec2(2200, -400), vec2(3200, -400)];
-const S1_B = [vec2(3200, -400), vec2(3800, 150), vec2(4800, 150), vec2(4800, -500), vec2(6600, -500)];
+// ===== ステージの作り（v79 から、どりゃどりゃさんのステージ地図の10ステージ） =====
+// 地図の記号: ⊗ ボス / ⊠ 尖った石（迫り岩） / □ 石（置き岩） / × 敵 / ○ スタート / △ ゴール。
+// 道の形は地図の線をなぞった仮置き。座標は x が右、y が下。長さ・幅・位置は遊んで直す前提で、ステージごとに数字で並べる
+// 制限時間（timeLimit）は、ボットで「半分くらい倒す・壊すと間に合い、何もしないと切れる」長さを測って決める
+
+// ===== ① Move：向きの変え方と、向ききった時の加速。敵なし =====
+// ゆるい道 → 少し上がる → 段差をまっすぐ上がる → ゴール
+const M1_A = [vec2(0, 0), vec2(1600, 0), vec2(2100, -300), vec2(3400, -300)];
+const M1_B = [vec2(3400, -300), vec2(3400, -1100), vec2(4900, -1100)];
 const STAGE_1 = courseStage({
-  label: 'STAGE 1  進む',
+  label: 'STAGE 1  Move',
   start: vec2(0, 0),
   corridors: [
-    { points: S1_A, width: 560 },
-    { points: S1_B, width: 440 },
+    { points: M1_A, width: 480 },
+    { points: M1_B, width: 380 },
   ],
-  goal: vec2(6300, -500),
-  timeLimit: 18, // 秒。自動走行のクリアタイム×1.5 を最初の値にした（仮）
+  goal: vec2(4650, -1100),
+  timeLimit: 13, // 秒。敵も石もないので、ボットのクリアタイム（8.5秒）の約1.5倍のふつうの制限時間
   enemies: [],
-  botPath: S1_A.concat(S1_B.slice(1)),
+  botPath: M1_A.concat(M1_B.slice(1)),
 });
 
-// ===== STAGE 2: 正しく魚を倒す =====
-// 1体ずつ間を空けて置く。最初は道の真ん中、だんだん左右にずらして、向きを合わせないと正面から当たらないようにする。
-// 終盤は細めの山なりの道に道なりの4体。1本道
-const S2_A = [vec2(0, 0), vec2(1800, 0), vec2(2400, -350), vec2(3800, -350), vec2(4400, 100), vec2(5600, 100)];
-const S2_UP = [vec2(5600, 100), vec2(6000, -300), vec2(6600, -300), vec2(7000, 100)];
-const S2_END = [vec2(7000, 100), vec2(7400, 100)];
+// ===== ② Kill：ジグザグの道に敵を散らし、ゴールの前に固める =====
+const K2 = [vec2(0, 0), vec2(1000, 0), vec2(1500, -350), vec2(2300, -350), vec2(2800, 0), vec2(3600, 0),
+  vec2(4100, -450), vec2(5000, -450), vec2(5500, 0), vec2(6300, 0), vec2(6800, -400), vec2(7700, -400)];
 const STAGE_2 = courseStage({
-  label: 'STAGE 2  倒す',
+  label: 'STAGE 2  Kill',
   start: vec2(0, 0),
   corridors: [
-    { points: S2_A, width: 520 },
-    { points: S2_UP, width: 300 },
-    { points: S2_END, width: 420 },
+    { points: K2, width: 380 },
   ],
-  goal: vec2(7250, 100),
-  timeLimit: 9, // 秒。1体も倒さずに最短で泳いだボットのタイムの約3/4。倒して戻すぶん（SCORE_KILL_REFILL）がないと間に合わない長さ（前は 18）
+  goal: vec2(7500, -400),
+  timeLimit: 9, // 秒。1体も倒さずに泳いだボットのタイム（12.3秒）の約3/4。倒して戻すぶんがないと間に合わない
   enemies: [
-    // 道の真ん中。そのまま進めば正面から倒せる
-    pathPoint(S2_A, 700, 0),
-    pathPoint(S2_A, 1200, 0),
-    // 少しずつ左右にずらす。向きを合わせて正面から当てる
-    pathPoint(S2_A, 1650, -70),
-    pathPoint(S2_A, 2150, 70),
-    pathPoint(S2_A, 2750, -90),
-    pathPoint(S2_A, 3200, 90),
-    pathPoint(S2_A, 3650, -110),
-    pathPoint(S2_A, 4150, 110),
-    pathPoint(S2_A, 4650, -110),
-    pathPoint(S2_A, 5150, 110),
-    // 山なりの道: 道なりに4体
-    ...alongPath(S2_UP, 300, 1200, 4, 0),
+    // 道の途中に1体ずつ、左右に少しずらして散らす
+    pathPoint(K2, 700, -60),
+    pathPoint(K2, 1500, 60),
+    pathPoint(K2, 2300, -60),
+    pathPoint(K2, 3000, 0),
+    pathPoint(K2, 3700, 60),
+    // 上の山の上に固まり
+    ...alongPath(K2, 4300, 4700, 3, -50),
+    pathPoint(K2, 4500, 70),
+    // 下の谷に横並び
+    ...alongPath(K2, 6100, 6500, 3, 0),
+    // ゴールの前の縦の壁
+    ...wallAcross(K2, 8000, 3, 80),
   ],
-  botPath: S2_A.concat(S2_UP.slice(1), S2_END.slice(1)),
+  botPath: K2,
 });
 
-// ===== STAGE 3: 魚を連続で倒す =====
-// S字の道に沿って雑魚の列（パンくず）。列の間隔をだんだん詰めて、なぞり続けると速さを保てることを覚える。
-// 終盤は細い山なりの道に密な列。1本道
-const S3_A = [vec2(0, 0), vec2(1200, 0), vec2(1700, -400), vec2(2500, -400), vec2(3000, 0), vec2(3500, 400), vec2(4300, 400), vec2(4800, 0), vec2(5800, 0)];
-const S3_UP = [vec2(5800, 0), vec2(6200, -350), vec2(7000, -350), vec2(7400, 0)];
-const S3_END = [vec2(7400, 0), vec2(8400, 0)];
+// ===== ③ Block：細い所の石、広い所で向かってくる尖った石、ゴール前の石2つ =====
+const B3_A = [vec2(0, 0), vec2(900, 0)];
+const B3_N1 = [vec2(900, 0), vec2(1300, -150), vec2(2000, -150)];
+const B3_W = [vec2(2000, -150), vec2(2500, -350), vec2(4600, -350), vec2(5100, -150)];
+const B3_N2 = [vec2(5100, -150), vec2(5600, -450), vec2(6800, -450)];
 const STAGE_3 = courseStage({
-  label: 'STAGE 3  連続で倒す',
+  label: 'STAGE 3  Block',
   start: vec2(0, 0),
   corridors: [
-    { points: S3_A, width: 520 },
-    { points: S3_UP, width: 280 },
-    { points: S3_END, width: 440 },
+    { points: B3_A, width: 420 },
+    { points: B3_N1, width: 220 },
+    { points: B3_W, width: 620 },
+    { points: B3_N2, width: 240 },
   ],
-  goal: vec2(8150, 0),
-  timeLimit: 10, // 秒。1体も倒さずに最短で泳いだボットのタイムの約3/4。倒して戻すぶん（SCORE_KILL_REFILL）がないと間に合わない長さ（前は 15）
+  goal: vec2(6600, -450),
+  timeLimit: 7, // 秒。半分倒したボットのタイム（9.1秒）の約3/4。道をふさぐ石を壊して戻すぶんも合わせて間に合う
   enemies: [
-    // まっすぐな列。間隔広め
-    ...alongPath(S3_A, 500, 1100, 4, 0),
-    // 上りのカーブに沿う列
-    ...alongPath(S3_A, 1350, 2300, 6, 0),
-    // 下りのカーブに沿う列。間隔を詰める
-    ...alongPath(S3_A, 2700, 3700, 7, 0),
-    // 最後の上り。いちばん密（敵の幅より少し広い間隔）
-    ...alongPath(S3_A, 4100, 5100, 7, 0),
-    // 山なりの道: 密な列
-    ...alongPath(S3_UP, 150, 1250, 8, 0),
-    // 最後の直線
-    ...alongPath(S3_END, 150, 500, 3, 0),
-  ],
-  botPath: S3_A.concat(S3_UP.slice(1), S3_END.slice(1)),
-});
-
-// ===== STAGE 4: 回転アタックを使う =====
-// 正面からは1体しか倒せない縦の壁（回転ならまとめて倒せる）→ 細い道をふさぐ置き岩（回転でしか通れない）→
-// 広い道で縦の壁と迫り岩 → 細い山なりの道に置き岩2つ。1本道
-const S4_A = [vec2(0, 0), vec2(1500, 0), vec2(2000, -300), vec2(3000, -300)];
-const S4_NARROW = [vec2(3000, -300), vec2(3900, -300)];
-const S4_WIDE = [vec2(3900, -300), vec2(4400, 200), vec2(6000, 200)];
-const S4_UP = [vec2(6000, 200), vec2(6400, -200), vec2(7200, -200), vec2(7600, 200)];
-const S4_END = [vec2(7600, 200), vec2(8500, 200)];
-const STAGE_4 = courseStage({
-  label: 'STAGE 4  回転アタック',
-  start: vec2(0, 0),
-  corridors: [
-    { points: S4_A, width: 520 },
-    { points: S4_NARROW, width: 220 },
-    { points: S4_WIDE, width: 560 },
-    { points: S4_UP, width: 240 },
-    { points: S4_END, width: 440 },
-  ],
-  goal: vec2(8250, 200),
-  timeLimit: 9, // 秒。1体も倒さずに最短で泳いだボットのタイムの約3/4。倒して戻すぶん（SCORE_KILL_REFILL）がないと間に合わない長さ（前は 17）
-  enemies: [
-    // 縦の壁。正面からだと真ん中の1体しか倒せず、端に触れると被弾する
-    ...wallAcross(S4_A, 800, 3, 70),
-    ...wallAcross(S4_A, 1300, 3, 70),
-    ...wallAcross(S4_A, 2300, 4, 70),
-    // 広い道の縦の壁
-    ...wallAcross(S4_WIDE, 1000, 4, 70),
-    ...wallAcross(S4_WIDE, 1500, 5, 70),
+    // 入ってすぐの3体
+    vec2(450, -60),
+    vec2(550, 0),
+    vec2(650, 60),
+    // 広い所の2体
+    vec2(2900, -350),
+    vec2(3400, -250),
   ],
   breakables: [
-    // 細い道をふさぐ。回転でしか通れない
-    breakable(3450, -300, 'static', 51, 180),
-    // 広い道の先から迫ってくる
-    breakable(5900, 200, 'moving', 53, 180),
-    // 山なりの道の置き岩2つ
-    breakable(6750, -200, 'static', 57, 180),
-    breakable(7050, -200, 'static', 59, 180),
+    // 細い所をふさぐ石
+    breakable(1650, -150, 'static', 71, 180),
+    // 広い所で、奥から左へ向かってくる尖った石
+    breakable(4300, -350, 'moving', 73, 180),
+    // ゴールの前の石2つ
+    breakable(6000, -450, 'static', 75, 180),
+    breakable(6300, -450, 'static', 77, 180),
   ],
-  botPath: S4_A.concat(S4_NARROW.slice(1), S4_WIDE.slice(1), S4_UP.slice(1), S4_END.slice(1)),
+  botPath: B3_A.concat(B3_N1.slice(1), B3_W.slice(1), B3_N2.slice(1)),
 });
 
-// ===== STAGE 6: ドリフトを使う（ボス戦のあと、最後のステージ） =====
-// 普通の旋回では曲がりきれない、細い道の直角の曲がり角と折り返し。曲がった先に、道をふさぐ置き岩や迫ってくる岩。
-// ドリフトで向きを変え、離して飛び出すと黄色い回転で割って抜けられる。終盤は上へ折り返す道の先に置き岩。1本道
-const S6_A = [vec2(0, 0), vec2(1400, 0), vec2(1400, -900), vec2(2200, -900), vec2(2200, 0), vec2(3000, 0)];
-const S6_B = [vec2(3000, 0), vec2(3700, 0)];
-const S6_C = [vec2(3700, 0), vec2(4600, 0), vec2(4600, -900), vec2(5600, -900)];
-const S6_SHORT = [vec2(5600, -900), vec2(5600, -1500), vec2(6300, -1500), vec2(6300, -900)];
-const S6_END = [vec2(6300, -900), vec2(7700, -900)];
-const STAGE_6 = courseStage({
-  label: 'STAGE 6  ドリフト',
+// ===== ⑤ Block：壊す石 → 上下に分かれる道（上は石3つ、下は敵） → 合流後、向かってくる尖った石 =====
+const B5_A = [vec2(0, 0), vec2(1400, 0)];
+const B5_UP = [vec2(1400, 0), vec2(1900, -500), vec2(3600, -500), vec2(4100, 0)];
+const B5_DOWN = [vec2(1400, 0), vec2(1900, 450), vec2(3600, 450), vec2(4100, 0)];
+const B5_END = [vec2(4100, 0), vec2(4500, -200), vec2(6900, -200)];
+const STAGE_5 = courseStage({
+  label: 'STAGE 5  Block',
   start: vec2(0, 0),
   corridors: [
-    { points: S6_A, width: 300 },
-    { points: S6_B, width: 220 },
-    { points: S6_C, width: 300 },
-    { points: S6_SHORT, width: 240 },
-    { points: S6_END, width: 380 },
+    { points: B5_A, width: 240 },
+    { points: B5_UP, width: 260 },
+    { points: B5_DOWN, width: 400 },
+    { points: B5_END, width: 440 },
   ],
-  goal: vec2(7450, -900),
-  timeLimit: 11, // 秒。1体も倒さずに最短で泳いだボットのタイムの約3/4。倒して戻すぶん（SCORE_KILL_REFILL）がないと間に合わない長さ（前は 26）
+  goal: vec2(6700, -200),
+  timeLimit: 8, // 秒。半分倒したボットのタイム（11.0秒）の約3/4。道をふさぐ石を壊して戻すぶんも合わせて間に合う
   enemies: [
-    ...alongPath(S6_A, 300, 1100, 6, 0),
-    ...alongPath(S6_A, 1700, 2100, 4, 0),
-    ...alongPath(S6_A, 2600, 3100, 4, 0),
-    ...alongPath(S6_C, 300, 800, 4, 0),
-    ...alongPath(S6_END, 700, 1000, 3, 0),
+    // 下の道の敵
+    vec2(2300, 400),
+    vec2(2700, 500),
+    vec2(3100, 400),
   ],
   breakables: [
-    // 曲がり角を抜けた先の細い道をふさぐ。ドリフト解放の回転で割る
-    breakable(3350, 0, 'static', 61, 180),
-    // 上へ折れた先から降ってくる
-    breakable(4600, -800, 'moving', 63, 90),
-    // 折り返しの先をふさぐ
-    breakable(6300, -1250, 'static', 67, 180),
+    // 入り口の壊す石
+    breakable(900, 0, 'static', 81, 180),
+    // 上の道の石3つ
+    breakable(2300, -500, 'static', 83, 180),
+    breakable(2750, -500, 'static', 85, 180),
+    breakable(3200, -500, 'static', 87, 180),
+    // 合流した後、左へ向かってくる尖った石3つ
+    breakable(5600, -290, 'moving', 89, 180),
+    breakable(5900, -110, 'moving', 91, 180),
+    breakable(6200, -290, 'moving', 93, 180),
   ],
-  botPath: S6_A.concat(S6_B.slice(1), S6_C.slice(1), S6_SHORT.slice(1), S6_END.slice(1)),
+  // ボットは敵のいる下の道を通る
+  botPath: B5_A.concat(B5_DOWN.slice(1), B5_END.slice(1)),
+});
+
+// ===== ⑦：くねくねの道。U字の折り返しに敵と石 =====
+const W7 = [vec2(0, 0), vec2(900, 0), vec2(1500, -400), vec2(2000, -400), vec2(2000, 1100),
+  vec2(2600, 1100), vec2(2600, 200), vec2(3200, 200), vec2(3200, 1500)];
+const STAGE_7 = courseStage({
+  label: 'STAGE 7',
+  start: vec2(0, 0),
+  corridors: [
+    { points: W7, width: 300 },
+  ],
+  goal: vec2(3200, 1300),
+  timeLimit: 8, // 秒。何も倒さず壊さずに泳いだボットのタイム（10.3秒）の約3/4
+  enemies: [
+    pathPoint(W7, 700, 0),
+    pathPoint(W7, 1400, 0),
+    // 下りの道とU字の底
+    pathPoint(W7, 2600, 50),
+    pathPoint(W7, 3100, -50),
+    pathPoint(W7, 3700, 0),
+    pathPoint(W7, 4000, 0),
+    // 上りの道
+    pathPoint(W7, 4500, 50),
+    pathPoint(W7, 5000, -50),
+    // 最後の下り
+    pathPoint(W7, 6200, 0),
+    pathPoint(W7, 6600, 0),
+  ],
+  breakables: [
+    // U字のまわりの石。道の片側に寄せて置く（よけるか、回転で割る）
+    breakable(pathPoint(W7, 2900, -70).x, pathPoint(W7, 2900, -70).y, 'static', 101, 180),
+    breakable(pathPoint(W7, 3850, 70).x, pathPoint(W7, 3850, 70).y, 'static', 103, 180),
+    breakable(pathPoint(W7, 4750, -70).x, pathPoint(W7, 4750, -70).y, 'static', 105, 180),
+    breakable(pathPoint(W7, 5600, 70).x, pathPoint(W7, 5600, 70).y, 'static', 107, 180),
+  ],
+  botPath: W7,
+});
+
+// ===== ⑨ Semi final：下から上へ上る広い道。敵と石。右上に別ルートの横道（今は行き止まり） =====
+// スタート演出は横から泳いでくるので、最初だけ横の細い道にして、すぐ上へ曲がる
+const S9_IN = [vec2(0, 0), vec2(500, 0), vec2(500, -400)];
+const S9_UP = [vec2(500, -400), vec2(500, -3700)];
+// 別ルートの横道。隠しステージやカニ戦への入り口にする予定。今は奥で行き止まり
+const S9_SIDE = [vec2(500, -3400), vec2(1500, -3600)];
+const STAGE_9 = courseStage({
+  label: 'STAGE 9  Semi final',
+  start: vec2(0, 0),
+  corridors: [
+    { points: S9_IN, width: 260 },
+    { points: S9_UP, width: 700 },
+    { points: S9_SIDE, width: 240 },
+  ],
+  goal: vec2(500, -3550),
+  timeLimit: 5, // 秒。1体も倒さずに泳いだボットのタイム（6.7秒）の約3/4
+  enemies: [
+    vec2(380, -900),
+    vec2(640, -1050),
+    vec2(420, -1500),
+    vec2(650, -1800),
+    vec2(350, -2200),
+    vec2(600, -2450),
+    vec2(480, -2900),
+  ],
+  breakables: [
+    breakable(560, -1300, 'static', 111, 180),
+    breakable(380, -1900, 'static', 113, 180),
+    breakable(640, -2650, 'static', 115, 180),
+    breakable(450, -3150, 'static', 117, 180),
+  ],
+  botPath: S9_IN.concat(S9_UP.slice(1)),
 });
 
 // ボス戦の部屋の中心。部屋の上端が y=0、左端が通路の右端になる位置
@@ -1285,8 +1318,6 @@ const BOSS_ROOM_CENTER = vec2(
   CONFIG.BOSS_ROOM_RADIUS
 );
 
-// ステージの一覧。上から順に遊ぶ。ゲームの処理は1本で、type で違うところ（クリア条件・壁・カメラの縦）だけを分ける
-// 共通の項目: type, label, startPos（GO! の瞬間の位置）, width / height（カメラが映せる範囲）, enemies（最初からいる雑魚）
 // ボス戦の部屋の柱。部屋の中心のまわりに等間隔に置く
 function bossRoomPillars() {
   const list = [];
@@ -1301,17 +1332,17 @@ function bossRoomPillars() {
   return list;
 }
 
-// ステージの一覧。上から順に遊ぶ。ゲームの処理は1本で、type で違うところ（クリア条件・外枠の壁）だけを分ける
-// 共通の項目: type, label, startPos（GO! の瞬間の位置）, width / height（カメラが映せる範囲）,
-//   enemies（最初からいる雑魚）, rocks（中の岩。当たると滑る）
-const STAGES = [
-  STAGE_1,
-  STAGE_2,
-  STAGE_3,
-  STAGE_4,
-  {
+// ボス戦のステージを作る。形（通路 → 丸い部屋）は4つとも同じで、名前と通路の敵・石だけを変える。
+// ボスは今は4つとも同じ（仮置き）。サメ・フグ・タコ・深海魚に差し替える時に、ここに種類を足す。
+// 地図の⑧（上から降りて入る）と⑩（暗闇）の形は、ボスを作る時に合わせる
+function bossStage(def) {
+  let breakables = [];
+  if (def.breakables) {
+    breakables = def.breakables;
+  }
+  return {
     type: 'boss',
-    label: 'STAGE 5  ボス戦',
+    label: def.label,
     startPos: vec2(CONFIG.BOSS_STAGE_START_X, BOSS_ROOM_CENTER.y),
     width: BOSS_ROOM_CENTER.x + CONFIG.BOSS_ROOM_RADIUS,
     height: CONFIG.BOSS_ROOM_RADIUS * 2,
@@ -1319,19 +1350,35 @@ const STAGES = [
     roomRadius: CONFIG.BOSS_ROOM_RADIUS,
     corridorTop: BOSS_ROOM_CENTER.y - CONFIG.BOSS_CORRIDOR_HEIGHT / 2,
     corridorBottom: BOSS_ROOM_CENTER.y + CONFIG.BOSS_CORRIDOR_HEIGHT / 2,
-    // 転: 部屋の柱。回り込みながら雑魚を拾って速さを溜める
+    // 部屋の柱。回り込みながら雑魚を拾って速さを溜める
     rocks: bossRoomPillars(),
-    // 通路の雑魚。起: まっすぐの列 → 承: ゆるく上へ弧を描く列で温めてから部屋へ
-    enemies: [
-      ...line(550, BOSS_ROOM_CENTER.y, 4, 60),
-      vec2(1100, BOSS_ROOM_CENTER.y - 40),
-      vec2(1220, BOSS_ROOM_CENTER.y - 110),
-      vec2(1350, BOSS_ROOM_CENTER.y - 140),
-      vec2(1480, BOSS_ROOM_CENTER.y - 110),
-      vec2(1600, BOSS_ROOM_CENTER.y - 40),
-    ],
-  },
-  STAGE_6,
+    enemies: def.enemies,
+    breakables: breakables,
+  };
+}
+
+// 地図の④⑥⑩：通路に敵3体、部屋の入り口に石
+function bossCorridorEnemies() {
+  return line(700, BOSS_ROOM_CENTER.y, 3, 120);
+}
+function bossEntranceRock(seed) {
+  return [breakable(1400, BOSS_ROOM_CENTER.y, 'static', seed, 180)];
+}
+
+// ステージの一覧。上から順に遊ぶ。ゲームの処理は1本で、type で違うところ（クリア条件・外枠の壁）だけを分ける
+// 共通の項目: type, label, startPos（GO! の瞬間の位置）, width / height（カメラが映せる範囲）,
+//   enemies（最初からいる雑魚）, rocks（中の岩。当たると滑る）
+const STAGES = [
+  STAGE_1,
+  STAGE_2,
+  STAGE_3,
+  bossStage({ label: 'STAGE 4  Boss 1', enemies: bossCorridorEnemies(), breakables: bossEntranceRock(121) }),
+  STAGE_5,
+  bossStage({ label: 'STAGE 6  Boss 2', enemies: bossCorridorEnemies(), breakables: bossEntranceRock(123) }),
+  STAGE_7,
+  bossStage({ label: 'STAGE 8  Boss 3', enemies: bossCorridorEnemies(), breakables: bossEntranceRock(125) }),
+  STAGE_9,
+  bossStage({ label: 'STAGE 10  Last boss', enemies: bossCorridorEnemies(), breakables: bossEntranceRock(127) }),
 ];
 
 // ステージの左端。カウントダウン中も画面の中を泳げるよう、GO! の位置より左に助走の区間を取る。
@@ -2553,6 +2600,8 @@ function createGame() {
       });
     }
     state.stats.rocksBroken++;
+    // 石を壊しても、敵を倒した時と同じくゲージ（＝のこり時間）を戻す
+    refillScore(CONFIG.SCORE_ROCK_REFILL);
   }
 
   function clampToStage(pos) {
