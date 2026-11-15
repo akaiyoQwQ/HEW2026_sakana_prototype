@@ -420,8 +420,8 @@ const CONFIG = {
   SCORE_RANK_S: 0.35,           // 割合。S の下限
   SCORE_RANK_A: 0.2,            // 割合。A の下限
   SCORE_RANK_B: 0.1,            // 割合。B の下限。これ未満は C
-  SCORE_KILL_REFILL: 0.3,       // 秒。体当たり・角で1体倒すごとにゲージ（＝のこり時間）を戻す量。満タンは超えない
-  SCORE_KILL_REFILL_SPIN: 0.3,  // 秒。回転で1体倒した時に戻す量。最初は同じ。回転を得にしたくなったらここを上げる
+  SCORE_KILL_REFILL: 1.0,       // 秒。体当たり・角で1体倒すごとにゲージ（＝のこり時間）を戻す量。満タンは超えない
+  SCORE_KILL_REFILL_SPIN: 1.0,  // 秒。回転で1体倒した時に戻す量。最初は同じ。回転を得にしたくなったらここを上げる
   BOSS_SCORE_TIME: 30,          // 秒。ボス戦（制限時間なし）のゲージの長さ。ボス戦を通しで走るボットがまだないので仮の値
   SCORE_GAUGE_SIZE: vec2(480, 14), // px。ゲージの幅と高さ
   SCORE_GAUGE_POS_Y: 24,        // px。画面の上からゲージの上端までの距離
@@ -429,7 +429,7 @@ const CONFIG = {
 
   // ===== 時間制限と崩落 =====
   // 制限時間は各ステージの timeLimit（秒、ゲーム内時間）。0 になるとステージが岩で崩れて TIME OVER、少しして自動でやり直す
-  COLLAPSE_WARN_TIME: 5,        // 秒。残りがこれを切ると、画面の上から瓦礫がポロポロ落ち始め、地鳴りで揺れる
+  COLLAPSE_WARN_TIME: 3,        // 秒。残りがこれを切ると、画面の上から瓦礫がポロポロ落ち始め、地鳴りで揺れる
   COLLAPSE_PEBBLE_RATE_START: 4, // 個/秒。前触れの瓦礫の量（落ち始め）
   COLLAPSE_PEBBLE_RATE_END: 30, // 個/秒。0 秒の直前の量。その間は残り時間に合わせて増える
   COLLAPSE_PEBBLE_SIZE_START: 6, // px。前触れの瓦礫の大きさ（落ち始め）
@@ -1134,7 +1134,7 @@ const STAGE_2 = courseStage({
     { points: S2_END, width: 420 },
   ],
   goal: vec2(7250, 100),
-  timeLimit: 18, // 秒。自動走行のクリアタイム×1.5 を最初の値にした（仮）
+  timeLimit: 9, // 秒。1体も倒さずに最短で泳いだボットのタイムの約3/4。倒して戻すぶん（SCORE_KILL_REFILL）がないと間に合わない長さ（前は 18）
   enemies: [
     // 道の真ん中。そのまま進めば正面から倒せる
     pathPoint(S2_A, 700, 0),
@@ -1169,7 +1169,7 @@ const STAGE_3 = courseStage({
     { points: S3_END, width: 440 },
   ],
   goal: vec2(8150, 0),
-  timeLimit: 15, // 秒。自動走行のクリアタイム×1.5 を最初の値にした（仮）
+  timeLimit: 10, // 秒。1体も倒さずに最短で泳いだボットのタイムの約3/4。倒して戻すぶん（SCORE_KILL_REFILL）がないと間に合わない長さ（前は 15）
   enemies: [
     // まっすぐな列。間隔広め
     ...alongPath(S3_A, 500, 1100, 4, 0),
@@ -1206,7 +1206,7 @@ const STAGE_4 = courseStage({
     { points: S4_END, width: 440 },
   ],
   goal: vec2(8250, 200),
-  timeLimit: 17, // 秒。自動走行のクリアタイム×1.5 を最初の値にした（仮）
+  timeLimit: 9, // 秒。1体も倒さずに最短で泳いだボットのタイムの約3/4。倒して戻すぶん（SCORE_KILL_REFILL）がないと間に合わない長さ（前は 17）
   enemies: [
     // 縦の壁。正面からだと真ん中の1体しか倒せず、端に触れると被弾する
     ...wallAcross(S4_A, 800, 3, 70),
@@ -1247,7 +1247,7 @@ const STAGE_6 = courseStage({
     { points: S6_END, width: 380 },
   ],
   goal: vec2(7450, -900),
-  timeLimit: 26, // 秒。自動走行のクリアタイム×1.5 を最初の値にした（仮）
+  timeLimit: 11, // 秒。1体も倒さずに最短で泳いだボットのタイムの約3/4。倒して戻すぶん（SCORE_KILL_REFILL）がないと間に合わない長さ（前は 26）
   enemies: [
     ...alongPath(S6_A, 300, 1100, 6, 0),
     ...alongPath(S6_A, 1700, 2100, 4, 0),
@@ -1420,6 +1420,12 @@ function createGame() {
     state.dead = false;        // 崩れて画面が真っ暗になったか。true になったら魚を動かさない
     state.collapseAt = -1;     // 崩れ始めた実時間（0 秒になった瞬間）。崩れている間も、真っ暗になるまでは魚を動かせる
     state.calloutIndex = 0;    // 次に出す残り時間の数字（LIMIT_CALLOUTS の番号）
+    // 制限時間より大きい区切りは飛ばす。飛ばさないと、制限時間が短いステージでスタート直後に「10」が出てしまう
+    if (state.timeLeft !== null) {
+      while (state.calloutIndex < CONFIG.LIMIT_CALLOUTS.length && CONFIG.LIMIT_CALLOUTS[state.calloutIndex] >= state.timeLeft) {
+        state.calloutIndex++;
+      }
+    }
     state.calloutAt = -1;      // 残り時間の数字を出した実時間
     state.calloutText = '';    // 出している数字
     state.deathAt = -1;        // TIME OVER を出した実時間
