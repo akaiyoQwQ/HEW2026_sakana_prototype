@@ -56,8 +56,6 @@
     --score-empty: rgba(4, 19, 27, 0.55); /* スコアゲージの減った部分 */
     --score-frame: #d8ecef; /* スコアゲージの枠とランクの区切り線 */
     --result-time-size: 64px; /* クリア画面のタイムの文字の大きさ。ランクの文字はこれの SCORE_RANK_SHOW_SCALE 倍 */
-    --spin-fx-light: #99caff; /* 回転エフェクトの絵の薄い青（魚の奥側）。ドット絵の色の一覧に入れるために持つ */
-    --spin-fx-dark: #00a0ff; /* 回転エフェクトの絵の濃い青（魚の手前側） */
     --font-hud: "DotGothic16", "Hiragino Sans", "Noto Sans JP", monospace;
     color-scheme: dark;
   }
@@ -4039,8 +4037,6 @@ function createRenderer(game, canvas) {
     rockCrack: token('--rock-crack'),
     spikeTip: token('--spike-tip'),
     fg: token('--fg'),
-    spinFxLight: token('--spin-fx-light'),
-    spinFxDark: token('--spin-fx-dark'),
   };
   const reduceMotion = token('--reduce-motion') === '1';
 
@@ -5834,18 +5830,20 @@ function createRenderer(game, canvas) {
     drawBoss(state.boss, state.realTime);
     // 魚の後ろ側の演出
     drawSwimParticles(state);
-    // 回転エフェクトは、奥側 → 魚 → 手前側の順で重ねて、魚を包んで見せる。
-    // 白いらせんの線（drawSlash）とドリルの帯（drawBands）は、この絵に置き換えたので描かない
-    drawSpinFx(state, false);
+    // 白いらせんの線（drawSlash）とドリルの帯（drawBands）は、回転エフェクトの絵に置き換えたので描かない
     drawDriftLines(state);
     if (pixel) {
       flushLayer(pixelBack, pixelBackCtx, false);
     }
 
-    // ----- 真ん中の層（なめらか）：カジキと、その残像だけ -----
+    // ----- 真ん中の層（なめらか）：カジキと、その残像と、回転エフェクトの絵 -----
     beginWorld(mainCtx, scale);
     drawBoostGhosts(state);
+    // 回転エフェクトは、シートの筆の線をそのまま見せるため、ドット絵の層ではなくカジキと同じなめらかな層に描く。
+    // 奥側 → 魚 → 手前側の順で重ねて、魚を包んで見せる
+    drawSpinFx(state, false);
     drawFish(state.fish, isDriftBlinkWhite(state));
+    drawSpinFx(state, true);
 
     // ----- 手前の層 -----
     let frontCtx = mainCtx;
@@ -5857,7 +5855,6 @@ function createRenderer(game, canvas) {
     beginWorld(frontCtx, layerScale);
     drawSparkles(state);
     drawDriftRings(state);
-    drawSpinFx(state, true);
     drawHitParticles(state);
     drawKillFx(state);
     // 手前の影（画面の下の岩と水草）と風切りの線。画面の座標で描く
