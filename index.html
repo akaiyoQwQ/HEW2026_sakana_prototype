@@ -47,6 +47,13 @@
     --drift-charge: #ffc61a; /* ドリフトのチャージ中に吸い込まれる線。黄色 */
     --drift-spin: #ffe14a;  /* ドリフト解放の回転アタック（らせん・ドリルの帯）。通常の回転の白と見分ける黄色 */
     --wall: #123b48;        /* 背景の格子の線 */
+    --crab: #7a5a44;        /* カブトガニの甲羅（仮の図形） */
+    --crab-dark: #3b2a22;   /* カブトガニの縁 */
+    --jelly: #f29cc8;       /* クラゲ */
+    --bottle: #6fbf73;      /* ゴミのビン */
+    --bag: #f4f4f4;         /* ゴミのビニール袋 */
+    --current: #c9efff;     /* 海流の帯と線 */
+    --vent: #ff8a3d;        /* 火山口の噴き上げと泡 */
     --rock-base: #3b3b40;   /* ステージの外の岩。地の色 */
     --rock-light: #56565c;  /* 岩。石の明るい縁 */
     --spike-tip: #e8442e;   /* 迫り岩のトゲの先。触ると痛いと一目で分かる赤 */
@@ -139,8 +146,22 @@
   .title-panel ul { margin: 0; padding-left: 1.2em; }
   .title-panel li { margin-bottom: 4px; }
   .title-panel .key { color: var(--goal); }
+  /* メニューの2つのボタン。どちらのステージの組で遊ぶかを選ぶ */
+  .title-menu { display: flex; gap: 12px; margin-top: 16px; justify-content: center; }
+  .title-choice {
+    font: inherit;
+    font-size: 16px;
+    white-space: nowrap;
+    color: var(--fg);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--goal);
+    border-radius: 8px;
+    padding: 12px 20px;
+    cursor: pointer;
+  }
+  .title-choice:hover { background: rgba(255, 255, 255, 0.16); }
   .title-start {
-    margin-top: 24px;
+    margin: 8px 0 16px;
     text-align: center;
     font-size: 22px;
     color: var(--goal);
@@ -313,6 +334,11 @@
   <div class="title-panel">
     <h1>さかな</h1>
     <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全10ステージ。STAGE 4・6・8・10 は奥の部屋で待つ大物を倒せばクリア、それ以外は奥にある光る目標にたどり着けばクリア。敵を倒したり岩を壊したりすると時間が延びる。制限時間を過ぎると水路が崩れてやり直し。タイムが短いほどいい記録。</p>
+    <div class="title-menu">
+      <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全10）</button>
+      <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全8）</button>
+    </div>
+    <div class="title-start" id="titleStart">クリックか 1 / 2 キーで選んでスタート</div>
     <h2>操作</h2>
     <ul>
       <li><span class="key">マウスカーソル</span>の方へ、魚はいつも少しずつ向きを変える（<span class="key">矢印キー / WASD</span> を押している間はそちらが優先）</li>
@@ -322,7 +348,6 @@
       <li>正面からぶつかれば、ふつうの体当たりでも倒せる。横や後ろから触れると被弾して減速</li>
       <li><span class="key">R</span>：やり直し</li>
     </ul>
-    <div class="title-start" id="titleStart">なにかキーを押してスタート</div>
   </div>
 </div>
 
@@ -747,6 +772,54 @@ const CONFIG = {
   // ===== 水路のステージ（STAGE 1〜4・6。折れ線に沿った水路を岩盤に掘る。奥の目標物に触れたらクリア） =====
   // 水路は { points: 折れ線の点, width: 幅 } の集まり。点の間は太い線、点のところは丸くつなぐ。分かれ道は水路をもう1本足す。
   // 最初の水路の最初の点の左に、スタート演出で泳いでくる助走の区間を自動で足す（長さは INTRO_SPEED とカウントダウンから計算）
+  // ===== 新ギミック（v82。新ギミックのステージで使う） =====
+  TRAP_SLOW_RATE: 0.5,          // 倍。減速の罠（カブトガニ・岩・ビン）に当たった時の速さの倍率
+  TRAP_SLOW_TIME: 1.0,          // 秒。減速が続く時間
+  TRAP_HIT_COOLDOWN: 0.4,       // 秒。同じカブトガニ・クラゲに続けて当たったことにしない時間（触れたままで毎フレーム当たらないように）
+  TRAP_SHAKE: 6,                // px。減速の罠に当たった時の画面の揺れ
+  CRAB_TRIGGER_RADIUS: 400,     // px。カブトガニが起き上がって飛びかかる距離
+  CRAB_LUNGE_SPEED: 900,        // px/秒。飛びかかる速さ
+  CRAB_LUNGE_TIME: 0.5,         // 秒。飛びかかっている時間
+  CRAB_RETURN_SPEED: 300,       // px/秒。元の場所へ戻る速さ
+  CRAB_REST_TIME: 1.0,          // 秒。戻ったあと、次に飛びかかれるまで休む時間
+  CRAB_SIZE: vec2(160, 60),     // px。甲羅の幅と高さ
+  CRAB_HIT_RADIUS: 70,          // px。当たりの半径
+  ROCK_SPIKE_SIZE: vec2(90, 260), // px。垂れ下がる・突き出る岩の根元の幅と長さ
+  ROCK_SPIKE_BURY: 40,          // px。根元を壁にめり込ませる深さ（すき間を作らないため）
+  JELLY_RADIUS: 70,             // px。クラゲの大きさ（当たりの半径）
+  JELLY_BOB: vec2(0, 120),      // px。クラゲと袋が漂う幅（横, 縦）
+  JELLY_BOB_PERIOD: 3,          // 秒。漂う1往復の時間
+  JELLY_PHASE_STEP: 0.7,        // 秒。並んだクラゲの揺れをずらす量
+  JELLY_BOUNCE_SPEED: 700,      // px/秒。跳ね返された時に押し飛ばされる速さ
+  JELLY_KNOCK_DECAY: 4,         // 1/秒。押し飛ばされた勢いが弱まる速さ
+  JELLY_ALPHA: 0.85,            // クラゲの濃さ
+  BOTTLE_RADIUS: 45,            // px。ビンの大きさ
+  BAG_RADIUS: 60,               // px。袋の大きさ
+  BAG_DRIFT_SPEED: 60,          // px/秒。袋が左へ流れてくる速さ
+  BAG_SLOW_RATE: 0.7,           // 倍。袋が貼り付いている間の速さの倍率
+  BAG_SHAKE_COUNT: 6,           // 回。袋が取れるまでの、マウスを左右に切り返す回数
+  BAG_SHAKE_WINDOW: 1.5,        // 秒。切り返しを数える時間の幅
+  BAG_SHAKE_MIN_MOVE: 40,       // px。1回の振りと数えるマウスの横の動きの大きさ（画面の px）
+  BAG_COVER_ALPHA: 0.6,         // 袋が貼り付いた時に、まわりを覆う白の濃さ
+  BAG_COVER_RADIUS: 260,        // px。覆う範囲の半径
+  BAG_HEAD_OFFSET: 90,          // px。袋を貼り付けて描く、魚の中心から頭の方への距離
+  BAG_DRAW_ALPHA: 0.75,         // 袋の濃さ
+  BREAK_WALL_ROCKS: 3,          // 個。壊せる壁に積む置き岩の数
+  BREAK_WALL_GAP: 140,          // px。積む岩の間隔
+  CURRENT_PUSH: 350,            // px/秒。海流が流れの向きへ押す速さ
+  CURRENT_BOOST: 250,           // px/秒。海流に乗っている間、魚の速さに足す量
+  CURRENT_DRAW_ALPHA: 0.25,     // 海流と火山口の帯の濃さ
+  CURRENT_DASH_WIDTH: 6,        // px。流れの向きへ動く線の太さ
+  CURRENT_DASH_LENGTH: 70,      // px。線の長さ
+  CURRENT_DASH_GAP: 180,        // px。線の間隔
+  VENT_FORCE: 1200,             // px/秒²。火山口が押し上げる強さ（上向きの速さがたまる量）
+  VENT_MAX_SPEED: 900,          // px/秒。押し上げられる速さの上限
+  VENT_DECAY: 1500,             // px/秒²。範囲から出たあと、押し上げる速さが抜ける量
+  VENT_SIZE: vec2(260, 900),    // px。噴き上げる範囲の幅と高さ（穴から上へ）
+  VENT_MOUND: vec2(70, 60),     // px。床の盛り上がりの、穴の半分の幅と高さ
+  VENT_BUBBLES: 8,              // 個。泡の数
+  VENT_BUBBLE_SPEED: 500,       // px/秒。泡がのぼる速さ
+  VENT_BUBBLE_RADIUS: 12,       // px。泡の大きさ
   MAP_SCALE: 17,                // px。ステージ地図の絵の1あたりのゲームの長さ。全ステージ共通。②の道幅（絵の上で約22）を、それまでの道幅 380px に合わせた値
   GATE_WIDTH: 8,
   WATER_CLAMP_PASSES: 3,        // 回。地図のステージで、縁にめり込んだ体を押し戻す計算を繰り返す回数（へこんだ角で2つの縁に挟まれた時用）
@@ -1029,6 +1102,16 @@ function pathLength(points) {
 }
 
 // 折れ線の始まりから距離 s の位置。side は進む向きの右側へずらす距離（負なら左）
+// 壊せる壁。置き岩を縦に BREAK_WALL_ROCKS 個、BREAK_WALL_GAP おきに積む。center が壁の真ん中
+function breakWall(center, seed) {
+  const list = [];
+  for (let i = 0; i < CONFIG.BREAK_WALL_ROCKS; i++) {
+    const y = center.y + (i - (CONFIG.BREAK_WALL_ROCKS - 1) / 2) * CONFIG.BREAK_WALL_GAP;
+    list.push(breakable(center.x, y, 'static', seed + i * 2, 180));
+  }
+  return list;
+}
+
 function pathPoint(points, s, side) {
   let rest = s;
   for (let i = 1; i < points.length; i++) {
@@ -1117,6 +1200,7 @@ function courseStage(def) {
     enemies: def.enemies,
     breakables: breakables,
     botPath: def.botPath,
+    gimmicks: def.gimmicks,
   };
 }
 
@@ -1343,7 +1427,7 @@ const BOT_9 = [[494, 1405], [490, 1385], [470, 1350], [460, 1300], [455, 1250], 
 
 // ステージの一覧。上から順に遊ぶ。ゲームの処理は1本で、type で違うところ（クリア条件）だけを分ける
 // ボスは今は4つとも同じ（仮置き）。サメ・フグ・タコ・深海魚に差し替える時に、ここに種類を足す
-const STAGES = [
+const STAGES_NORMAL = [
   mapStage(MAP_1, { label: 'STAGE 1  Move', type: 'zako', timeLimit: 6, /* 秒。敵も石もないので、ボットのクリアタイム（4.0秒）の約1.5倍のふつうの制限時間 */ botPath: BOT_1 }),
   mapStage(MAP_2, { label: 'STAGE 2  Kill', type: 'zako', timeLimit: 6, /* 秒。1体も倒さずに泳いだボットのタイム（7.5秒）の約3/4。倒して戻すぶんがないと間に合わない */ botPath: BOT_2 }),
   mapStage(MAP_3, { label: 'STAGE 3  Block', type: 'zako', timeLimit: 7.5, /* 秒。何も倒さず壊さずに泳いだボットのタイム（10.0秒）の約3/4 */ botPath: BOT_3 }),
@@ -1355,6 +1439,118 @@ const STAGES = [
   mapStage(MAP_9, { label: 'STAGE 9  Semi final', type: 'zako', timeLimit: 4.5, /* 秒。何も倒さず壊さずに泳いだボットのタイム（6.0秒）の約3/4 */ botPath: BOT_9 }),
   mapStage(MAP_10, { label: 'STAGE 10  Last boss', type: 'boss', timeLimit: null }),
 ];
+
+// ===== 新ギミックのステージ（v82 から。メニューで「新ギミックのステージ」を選んだ時の8ステージ） =====
+// ギミック1つにつき1ステージ。道の形は仮置き（ギミックの手触りを確かめるため）。座標は x が右、y が下。
+// gimmicks の中身：crabs カブトガニ（床に伏せる位置） / stones 垂れ下がる・突き出る岩（根元の位置と、先が向く角度） /
+//   jellies クラゲ / bottles ビン / bags ビニール袋 / currents 海流（帯の始まり・終わり・幅） / vents 火山口（床の穴の位置）
+// 制限時間は、ボットのタイムの約1.5倍の「ふつうの制限時間」（倒さないと時間切れのルールは入れない）
+
+// G1：カブトガニ。まっすぐな道の床に伏せていて、近づくと飛びかかってくる
+const G1 = [vec2(0, 0), vec2(5200, 0)];
+const STAGE_G1 = courseStage({
+  label: 'G1  カブトガニ', start: vec2(0, 0),
+  corridors: [{ points: G1, width: 640 }],
+  goal: vec2(5000, 0), timeLimit: 11.5, /* 秒。ボットのタイム（7.7秒）の約1.5倍 */
+  enemies: [vec2(900, -150), vec2(2500, -180), vec2(3900, -150)],
+  gimmicks: { crabs: [vec2(1500, 290), vec2(2200, 290), vec2(3000, 290), vec2(3500, 290), vec2(4400, 290)] },
+  botPath: [vec2(0, -120), vec2(5000, -120), vec2(5000, 0)],
+});
+
+// G2：落石／岩石。天井から垂れ下がる岩と、床から突き出る岩が交互に並ぶ
+const G2 = [vec2(0, 0), vec2(5400, 0)];
+const STAGE_G2 = courseStage({
+  label: 'G2  落石／岩石', start: vec2(0, 0),
+  corridors: [{ points: G2, width: 720 }],
+  goal: vec2(5200, 0), timeLimit: 12.5, /* 秒。ボットのタイム（8.2秒）の約1.5倍 */
+  enemies: [vec2(1300, 150), vec2(2500, -150), vec2(3700, 150)],
+  gimmicks: { stones: [
+    { pos: vec2(1000, -360), dirDeg: 90 }, { pos: vec2(1600, 360), dirDeg: -90 },
+    { pos: vec2(2200, -360), dirDeg: 90 }, { pos: vec2(2800, 360), dirDeg: -90 },
+    { pos: vec2(3400, -360), dirDeg: 90 }, { pos: vec2(4000, 360), dirDeg: -90 },
+    { pos: vec2(4600, -360), dirDeg: 90 },
+  ] },
+  botPath: [vec2(0, 0), vec2(5200, 0)],
+});
+
+// G3：クラゲ。広い道に、ふわふわ漂うクラゲが散らばる
+const G3 = [vec2(0, 0), vec2(5200, 0)];
+const STAGE_G3 = courseStage({
+  label: 'G3  クラゲ', start: vec2(0, 0),
+  corridors: [{ points: G3, width: 820 }],
+  goal: vec2(5000, 0), timeLimit: 14, /* 秒。ボットのタイム（9.3秒）の約1.5倍 */
+  enemies: [vec2(1100, 250), vec2(2600, -250), vec2(4100, 250)],
+  gimmicks: { jellies: [vec2(1400, -120), vec2(1900, 120), vec2(2400, -60), vec2(3000, 150), vec2(3500, -150), vec2(4300, 0)] },
+  botPath: [vec2(0, 0), vec2(5000, 0)],
+});
+
+// G4：ゴミ（ビン）。道に浮かぶビン。当たると減速、回転で当てれば壊せる
+const G4 = [vec2(0, 0), vec2(1800, 0), vec2(2400, -400), vec2(5000, -400)];
+const STAGE_G4 = courseStage({
+  label: 'G4  ゴミ（ビン）', start: vec2(0, 0),
+  corridors: [{ points: G4, width: 600 }],
+  goal: vec2(4800, -400), timeLimit: 15, /* 秒。ボットのタイム（10.1秒）の約1.5倍 */
+  enemies: [vec2(1000, 180), vec2(3200, -550)],
+  gimmicks: { bottles: [vec2(800, -100), vec2(1300, 120), vec2(1700, -60), vec2(2600, -380), vec2(3000, -250), vec2(3600, -470), vec2(4100, -330)] },
+  botPath: [vec2(0, 0), vec2(1800, 0), vec2(2400, -400), vec2(4800, -400)],
+});
+
+// G5：ゴミ（ビニール袋）。奥からゆっくり流れてくる袋。貼り付いたらマウスを左右に振って取る
+const G5 = [vec2(0, 0), vec2(5400, 0)];
+const STAGE_G5 = courseStage({
+  label: 'G5  ゴミ（ビニール袋）', start: vec2(0, 0),
+  corridors: [{ points: G5, width: 700 }],
+  goal: vec2(5200, 0), timeLimit: 15, /* 秒。ボットのタイム（10.1秒）の約1.5倍 */
+  enemies: [vec2(1200, 200), vec2(2900, -200), vec2(4300, 200)],
+  gimmicks: { bags: [vec2(1500, -80), vec2(2400, 100), vec2(3300, 0), vec2(4100, -120)] },
+  botPath: [vec2(0, 0), vec2(5200, 0)],
+});
+
+// G6：壊せる壁。上の回り道が正規の道で、まっすぐの近道は岩を積んだ壁でふさがっている。回転で壊すと近道が開く
+const G6_MAIN = [vec2(0, 0), vec2(1500, 0), vec2(1500, -1200), vec2(3700, -1200), vec2(3700, 0), vec2(5400, 0)];
+const G6_SHORT = [vec2(1500, 0), vec2(3700, 0)];
+const STAGE_G6 = courseStage({
+  label: 'G6  壊せる壁', start: vec2(0, 0),
+  corridors: [{ points: G6_MAIN, width: 420 }, { points: G6_SHORT, width: 420 }],
+  goal: vec2(5200, 0), timeLimit: 14, /* 秒。ボットのタイム（7.9秒）の約1.5倍。回り道を通っても間に合うよう少し長め */
+  enemies: [vec2(2600, -1200), vec2(4500, 0)],
+  // 近道をふさぐ壁。置き岩を縦に BREAK_WALL_ROCKS 個積んで作る
+  breakables: breakWall(vec2(2000, 0), 61),
+  botPath: [vec2(0, 0), vec2(5200, 0)],
+});
+
+// G7：海流。流れの帯に入ると押されて加速する。前半はまっすぐ、後半は斜めに上る流れ
+const G7 = [vec2(0, 0), vec2(2600, 0), vec2(3400, -700), vec2(5600, -700)];
+const STAGE_G7 = courseStage({
+  label: 'G7  海流', start: vec2(0, 0),
+  corridors: [{ points: G7, width: 700 }],
+  goal: vec2(5400, -700), timeLimit: 8.5, /* 秒。ボットのタイム（5.5秒）の約1.5倍 */
+  enemies: [vec2(1500, 230), vec2(4200, -900)],
+  gimmicks: { currents: [
+    { a: vec2(600, -120), b: vec2(2400, -120), width: 260 },
+    { a: vec2(2700, -80), b: vec2(3400, -700), width: 260 },
+    { a: vec2(3600, -700), b: vec2(5000, -700), width: 260 },
+  ] },
+  botPath: [vec2(0, -120), vec2(2500, -120), vec2(3400, -700), vec2(5400, -700)],
+});
+
+// G8：火山口。床の穴から真上へ噴き上げる流れ。入ると逆らえずに押し上げられる
+const G8 = [vec2(0, 0), vec2(5400, 0)];
+const STAGE_G8 = courseStage({
+  label: 'G8  火山口', start: vec2(0, 0),
+  corridors: [{ points: G8, width: 1000 }],
+  goal: vec2(5200, 0), timeLimit: 13, /* 秒。ボットのタイム（8.7秒）の約1.5倍 */
+  enemies: [vec2(1400, -380), vec2(2800, -380), vec2(4200, -380)],
+  gimmicks: { vents: [vec2(1400, 500), vec2(2800, 500), vec2(4200, 500)] },
+  botPath: [vec2(0, 200), vec2(5200, 200), vec2(5200, 0)],
+});
+
+const STAGES_GIMMICK = [STAGE_G1, STAGE_G2, STAGE_G3, STAGE_G4, STAGE_G5, STAGE_G6, STAGE_G7, STAGE_G8];
+
+// メニューで選べるステージの組。'normal' はいつものステージ（地図の10ステージ）、'gimmick' は新ギミックの8ステージ
+const STAGE_SETS = { normal: STAGES_NORMAL, gimmick: STAGES_GIMMICK };
+// 全部のステージを1列に並べたもの。海藻の並びの種など、ステージごとに違う番号がほしい所で使う
+const ALL_STAGES = STAGES_NORMAL.concat(STAGES_GIMMICK);
 
 // ステージの左端。カウントダウン中も画面の中を泳げるよう、GO! の位置より左に助走の区間を取る。
 // 数値で持たずに計算するので、開始位置やカウントダウンの長さを変えても自動でついてくる
@@ -1450,7 +1646,12 @@ function createGame() {
 
   // 今遊んでいるステージ
   function currentStage() {
-    return STAGES[state.stageIndex];
+    return stageList()[state.stageIndex];
+  }
+
+  // 今遊んでいるステージの組（メニューで選んだ方）
+  function stageList() {
+    return STAGE_SETS[state.stageSet];
   }
 
   // 今のステージを最初から始める（スタート演出から）。R でやり直す時、次のステージへ進む時にも使う
@@ -1502,6 +1703,12 @@ function createGame() {
     }
     state.fish = {
       pos: vec2(stage.startPos.x, stage.startPos.y),
+      slowTimer: 0,            // 秒。減速の罠に当たってから、速さを TRAP_SLOW_RATE 倍にしている残り時間
+      bagged: false,           // ビニール袋が顔に貼り付いているか
+      shake: { lastDir: 0, travel: 0, turns: [] }, // 袋を振りほどくマウスの切り返しの記録
+      knock: vec2(0, 0),       // クラゲに跳ね返された勢い（px/秒）。だんだん弱まる
+      ventVel: 0,              // 火山口に押し上げられている速さ（px/秒、上向き）
+      inCurrent: false,        // 海流の帯の中にいるか
       angle: startDeg * DEG, // 魚の向き（頭の向き）。正面の判定と見た目に使う
       moveAngle: startDeg * DEG, // 進む向き。ふだんは angle と同じ。ドリフト中だけ押した瞬間の向きのまま残して横滑りする
       inputSpeed: 0,           // 入力で積んだぶん。上限あり。向きを合わせた入力が途切れると、保ったあと減っていく
@@ -1550,6 +1757,8 @@ function createGame() {
       });
     }
 
+    resetGimmicks(stage);
+
     // ボスはボス戦だけ。部屋の中心から出る。雑魚戦では倒された扱いにして、当たりも描画もしない
     let bossPos = vec2(0, 0);
     if (stage.type === 'boss') {
@@ -1592,7 +1801,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -2041,12 +2250,24 @@ function createGame() {
   // ブレーキをかける前の速度。5つの足し算。自動前進 + 入力ぶん + 回転ぶん + 撃破ぶん + ドリフトぶん
   function rawSpeed() {
     const fish = state.fish;
-    return CONFIG.BASE_SPEED + fish.inputSpeed + fish.spinBonus + fish.killBonus + fish.driftBoost;
+    let current = 0;
+    if (fish.inCurrent) {
+      current = CONFIG.CURRENT_BOOST;
+    }
+    return CONFIG.BASE_SPEED + fish.inputSpeed + fish.spinBonus + fish.killBonus + fish.driftBoost + current;
   }
 
   function totalSpeed() {
     // ドリフトのブレーキは掛け算。積んだ速度そのものは減らさないので、離せば元の速さに戻る
-    return rawSpeed() * state.fish.driftBrake;
+    // 罠の減速も掛け算。減速の罠（カブトガニ・岩・ビン）と、袋が貼り付いている間
+    let trap = 1;
+    if (state.fish.slowTimer > 0) {
+      trap = trap * CONFIG.TRAP_SLOW_RATE;
+    }
+    if (state.fish.bagged) {
+      trap = trap * CONFIG.BAG_SLOW_RATE;
+    }
+    return rawSpeed() * state.fish.driftBrake * trap;
   }
 
   function turnRate() {
@@ -2083,12 +2304,32 @@ function createGame() {
 
   // 説明画面を閉じて、スタート演出を始める。
   // スタートに使ったキーはゲームの入力として数えないよう、押している方向を空にしておく
-  function startFromTitle() {
+  // setName はメニューで選んだステージの組（'normal' か 'gimmick'）。選んだ組の最初のステージから始める
+  function startFromTitle(setName) {
     if (!state.title) {
       return;
     }
+    state.stageSet = setName;
+    state.stageIndex = 0;
+    state.stageTimes = [];
+    state.stageRanks = [];
+    state.transition = null;
+    state.introPaused = false;
+    state.quickIntro = false;
+    reset();
     state.title = false;
     state.heldDirs = {};
+  }
+
+  // 全部クリアしたあとの R。メニュー（説明画面）に戻って、ステージの組を選び直せるようにする
+  function backToMenu() {
+    state.stageIndex = 0;
+    state.stageTimes = [];
+    state.stageRanks = [];
+    state.transition = null;
+    state.introPaused = false;
+    reset();
+    state.title = true;
   }
 
   // 向かいたい向き（ラジアン）。マウスで向きを合わせている間はカーソルの方、そうでなければ方向キーの向き。
@@ -2387,6 +2628,302 @@ function createGame() {
   function isSpinning() {
     return state.fish.spinTimer > 0;
   }
+
+  // ---------- 新ギミック（v82） ----------
+  // ステージの gimmicks から、このステージで動かすギミックを作る。reset() から呼ぶ
+  function resetGimmicks(stage) {
+    let g = {};
+    if (stage.gimmicks) {
+      g = stage.gimmicks;
+    }
+    function list(name) {
+      if (g[name]) {
+        return g[name];
+      }
+      return [];
+    }
+    state.gim = {
+      crabs: list('crabs').map(function (p) {
+        return { base: vec2(p.x, p.y), pos: vec2(p.x, p.y), phase: 'idle', t: 0, dir: vec2(0, -1), alive: true, hitCooldown: 0 };
+      }),
+      stones: list('stones').map(function (s) {
+        return { tri: stoneTriangle(s), base: s.pos, dirDeg: s.dirDeg };
+      }),
+      jellies: list('jellies').map(function (p, i) {
+        return { home: vec2(p.x, p.y), pos: vec2(p.x, p.y), phase: i * CONFIG.JELLY_PHASE_STEP, cooldown: 0 };
+      }),
+      bottles: list('bottles').map(function (p) {
+        return { pos: vec2(p.x, p.y), alive: true };
+      }),
+      bags: list('bags').map(function (p, i) {
+        return { pos: vec2(p.x, p.y), home: vec2(p.x, p.y), phase: i * CONFIG.JELLY_PHASE_STEP, alive: true };
+      }),
+      currents: list('currents'),
+      vents: list('vents'),
+    };
+  }
+
+  // 垂れ下がる・突き出る岩の三角形。根元の真ん中 pos から、dirDeg の向きへ先が伸びる
+  function stoneTriangle(s) {
+    const a = s.dirDeg * DEG;
+    const ux = Math.cos(a);
+    const uy = Math.sin(a);
+    const half = CONFIG.ROCK_SPIKE_SIZE.x / 2;
+    const len = CONFIG.ROCK_SPIKE_SIZE.y;
+    // 根元は壁に少しめり込ませて、すき間ができないようにする
+    const back = CONFIG.ROCK_SPIKE_BURY;
+    return { points: [
+      vec2(s.pos.x - uy * half - ux * back, s.pos.y + ux * half - uy * back),
+      vec2(s.pos.x + ux * len, s.pos.y + uy * len),
+      vec2(s.pos.x + uy * half - ux * back, s.pos.y - ux * half - uy * back),
+    ] };
+  }
+
+  // 減速の罠（カブトガニ・岩・ビン）に当たった。しばらく速さを TRAP_SLOW_RATE 倍にする
+  function slowFish() {
+    const fish = state.fish;
+    fish.slowTimer = CONFIG.TRAP_SLOW_TIME;
+    fish.flash = CONFIG.FLASH_DURATION;
+    state.shake = CONFIG.SHAKE_DURATION;
+    state.shakeDuration = CONFIG.SHAKE_DURATION;
+    state.shakeAmp = CONFIG.TRAP_SHAKE;
+    state.stats.trapHits++;
+  }
+
+  // 丸い相手（中心 c、半径 rr）から魚を押し出す。重なっていたら true
+  function pushFishOutOfCircle(c, rr) {
+    const fish = state.fish;
+    const dx = fish.pos.x - c.x;
+    const dy = fish.pos.y - c.y;
+    const d = Math.hypot(dx, dy);
+    const minD = rr + CONFIG.FISH_RADIUS;
+    if (d >= minD) {
+      return false;
+    }
+    if (d > 0) {
+      fish.pos.x = c.x + dx / d * minD;
+      fish.pos.y = c.y + dy / d * minD;
+    }
+    return true;
+  }
+
+  // 点 p が海流の帯（線分 a→b のまわり、幅 width）の中にあるか
+  function insideCurrent(p, cur) {
+    const ex = cur.b.x - cur.a.x;
+    const ey = cur.b.y - cur.a.y;
+    const len2 = ex * ex + ey * ey;
+    const t = clamp(((p.x - cur.a.x) * ex + (p.y - cur.a.y) * ey) / len2, 0, 1);
+    const qx = cur.a.x + ex * t;
+    const qy = cur.a.y + ey * t;
+    return Math.hypot(p.x - qx, p.y - qy) <= cur.width / 2;
+  }
+
+  // 点 p が火山口の噴き上げる範囲（穴の真上の長方形）の中にあるか
+  function insideVent(p, v) {
+    return Math.abs(p.x - v.x) <= CONFIG.VENT_SIZE.x / 2 && p.y <= v.y && p.y >= v.y - CONFIG.VENT_SIZE.y;
+  }
+
+  // ギミックを1フレーム進める。魚を動かした後に呼ぶ
+  function updateGimmicks(dt) {
+    const fish = state.fish;
+    const g = state.gim;
+    if (fish.slowTimer > 0) {
+      fish.slowTimer -= dt;
+    }
+
+    // 海流：帯の中にいる間、流れの向きへ押し、速さに CURRENT_BOOST を足す
+    fish.inCurrent = false;
+    for (const cur of g.currents) {
+      if (insideCurrent(fish.pos, cur)) {
+        fish.inCurrent = true;
+        const len = Math.hypot(cur.b.x - cur.a.x, cur.b.y - cur.a.y);
+        fish.pos.x += (cur.b.x - cur.a.x) / len * CONFIG.CURRENT_PUSH * dt;
+        fish.pos.y += (cur.b.y - cur.a.y) / len * CONFIG.CURRENT_PUSH * dt;
+      }
+    }
+
+    // 火山口：範囲の中にいる間、上向きの速さがたまっていき、出ると少しずつ抜ける。魚の操作とは別に足すので逆らえない
+    let inVent = false;
+    for (const v of g.vents) {
+      if (insideVent(fish.pos, v)) {
+        inVent = true;
+      }
+    }
+    if (inVent) {
+      fish.ventVel = Math.min(fish.ventVel + CONFIG.VENT_FORCE * dt, CONFIG.VENT_MAX_SPEED);
+    } else {
+      fish.ventVel = Math.max(fish.ventVel - CONFIG.VENT_DECAY * dt, 0);
+    }
+    fish.pos.y -= fish.ventVel * dt;
+
+    // クラゲに跳ね返された勢い。だんだん弱まる
+    fish.pos.x += fish.knock.x * dt;
+    fish.pos.y += fish.knock.y * dt;
+    const keep = Math.exp(-CONFIG.JELLY_KNOCK_DECAY * dt);
+    fish.knock.x *= keep;
+    fish.knock.y *= keep;
+    clampToStage(fish.pos);
+
+    // カブトガニ：伏せている → 近づくと魚の方へ飛びかかる → 元の場所へ戻る
+    for (const c of g.crabs) {
+      if (!c.alive) {
+        continue;
+      }
+      if (c.hitCooldown > 0) {
+        c.hitCooldown -= dt;
+      }
+      if (c.phase === 'idle') {
+        if (dist(c.pos, fish.pos) <= CONFIG.CRAB_TRIGGER_RADIUS) {
+          const d = Math.max(dist(c.pos, fish.pos), 1);
+          c.dir = vec2((fish.pos.x - c.pos.x) / d, (fish.pos.y - c.pos.y) / d);
+          c.phase = 'lunge';
+          c.t = 0;
+        }
+      } else if (c.phase === 'lunge') {
+        c.t += dt;
+        c.pos.x += c.dir.x * CONFIG.CRAB_LUNGE_SPEED * dt;
+        c.pos.y += c.dir.y * CONFIG.CRAB_LUNGE_SPEED * dt;
+        if (c.t >= CONFIG.CRAB_LUNGE_TIME) {
+          c.phase = 'return';
+        }
+      } else {
+        const d = dist(c.pos, c.base);
+        const step = CONFIG.CRAB_RETURN_SPEED * dt;
+        if (d <= step) {
+          c.pos = vec2(c.base.x, c.base.y);
+          c.phase = 'rest';
+          c.t = 0;
+        } else {
+          c.pos.x += (c.base.x - c.pos.x) / d * step;
+          c.pos.y += (c.base.y - c.pos.y) / d * step;
+        }
+      }
+      // 戻ったあとは少し休んでから、また近づくのを待つ
+      if (c.phase === 'rest') {
+        c.t += dt;
+        if (c.t >= CONFIG.CRAB_REST_TIME) {
+          c.phase = 'idle';
+        }
+      }
+      if (dist(c.pos, fish.pos) <= CONFIG.CRAB_HIT_RADIUS + CONFIG.FISH_RADIUS) {
+        if (isSpinning()) {
+          // 回転で当てれば倒せる。雑魚を回転で倒した時と同じ扱い
+          c.alive = false;
+          addBonus('spinBonus', CONFIG.SPIN_BONUS_PER_HIT);
+          triggerHitstop('spin');
+          spawnKillFx(c.pos, 'spin');
+          state.stats.spinKills++;
+          refillScore(CONFIG.SCORE_KILL_REFILL_SPIN);
+        } else if (c.hitCooldown <= 0) {
+          slowFish();
+          c.hitCooldown = CONFIG.TRAP_HIT_COOLDOWN;
+        }
+      }
+    }
+
+    // 垂れ下がる・突き出る岩：壁と同じく押し出して、当たったら減速
+    for (const s of g.stones) {
+      if (pushOutOfRock(fish.pos, s.tri, CONFIG.FISH_RADIUS)) {
+        if (fish.slowTimer <= 0) {
+          slowFish();
+        }
+      }
+    }
+
+    // クラゲ：ふわふわ上下に漂う。当たると、ぶつかった面で向きを跳ね返して、反対へ押し飛ばす
+    for (const j of g.jellies) {
+      j.phase += dt;
+      j.pos.x = j.home.x + CONFIG.JELLY_BOB.x * Math.sin(j.phase * TAU / CONFIG.JELLY_BOB_PERIOD);
+      j.pos.y = j.home.y + CONFIG.JELLY_BOB.y * Math.sin(j.phase * TAU / CONFIG.JELLY_BOB_PERIOD);
+      if (j.cooldown > 0) {
+        j.cooldown -= dt;
+      }
+      if (dist(j.pos, fish.pos) <= CONFIG.JELLY_RADIUS + CONFIG.FISH_RADIUS && j.cooldown <= 0) {
+        const d = Math.max(dist(j.pos, fish.pos), 1);
+        const nx = (fish.pos.x - j.pos.x) / d;
+        const ny = (fish.pos.y - j.pos.y) / d;
+        // 進む向きを、ぶつかった面（クラゲの中心から魚への向き）で鏡のように折り返す
+        const vx = Math.cos(fish.moveAngle);
+        const vy = Math.sin(fish.moveAngle);
+        const dot = vx * nx + vy * ny;
+        const rx = vx - 2 * dot * nx;
+        const ry = vy - 2 * dot * ny;
+        fish.angle = Math.atan2(ry, rx);
+        fish.moveAngle = fish.angle;
+        fish.knock = vec2(nx * CONFIG.JELLY_BOUNCE_SPEED, ny * CONFIG.JELLY_BOUNCE_SPEED);
+        j.cooldown = CONFIG.TRAP_HIT_COOLDOWN;
+        fish.flash = CONFIG.FLASH_DURATION;
+        state.stats.trapHits++;
+      }
+      pushFishOutOfCircle(j.pos, CONFIG.JELLY_RADIUS);
+    }
+
+    // ビン：その場に浮かぶ。回転で当てれば壊せる。それ以外は押し出して減速
+    for (const b of g.bottles) {
+      if (!b.alive) {
+        continue;
+      }
+      if (dist(b.pos, fish.pos) <= CONFIG.BOTTLE_RADIUS + CONFIG.FISH_RADIUS) {
+        if (isSpinning()) {
+          b.alive = false;
+          triggerHitstop('normal');
+          spawnKillFx(b.pos, 'normal');
+          state.stats.bottlesBroken++;
+        } else {
+          pushFishOutOfCircle(b.pos, CONFIG.BOTTLE_RADIUS);
+          if (fish.slowTimer <= 0) {
+            slowFish();
+          }
+        }
+      }
+    }
+
+    // ビニール袋：左へゆっくり流れてくる。当たると顔に貼り付く（回転していても貼り付く）
+    for (const bag of g.bags) {
+      if (!bag.alive) {
+        continue;
+      }
+      bag.phase += dt;
+      bag.pos.x -= CONFIG.BAG_DRIFT_SPEED * dt;
+      bag.pos.y = bag.home.y + CONFIG.JELLY_BOB.y * Math.sin(bag.phase * TAU / CONFIG.JELLY_BOB_PERIOD);
+      if (!fish.bagged && dist(bag.pos, fish.pos) <= CONFIG.BAG_RADIUS + CONFIG.FISH_RADIUS) {
+        bag.alive = false;
+        fish.bagged = true;
+        fish.shake = { lastDir: 0, travel: 0, turns: [] };
+        state.stats.bagged++;
+      }
+    }
+  }
+
+  // マウスの横の動き（画面の px）。袋が貼り付いている間だけ数える。
+  // 同じ向きに BAG_SHAKE_MIN_MOVE 以上動かしてから逆へ切り返したら1回。BAG_SHAKE_WINDOW 秒の間に BAG_SHAKE_COUNT 回で取れる
+  function mouseShake(dx) {
+    const fish = state.fish;
+    if (!fish.bagged || dx === 0) {
+      return;
+    }
+    const sh = fish.shake;
+    let dir = 1;
+    if (dx < 0) {
+      dir = -1;
+    }
+    if (dir === sh.lastDir) {
+      sh.travel += Math.abs(dx);
+      return;
+    }
+    if (sh.travel >= CONFIG.BAG_SHAKE_MIN_MOVE) {
+      sh.turns.push(state.realTime);
+    }
+    sh.lastDir = dir;
+    sh.travel = Math.abs(dx);
+    sh.turns = sh.turns.filter(function (t) { return state.realTime - t <= CONFIG.BAG_SHAKE_WINDOW; });
+    if (sh.turns.length >= CONFIG.BAG_SHAKE_COUNT) {
+      fish.bagged = false;
+      fish.flash = CONFIG.FLASH_DURATION;
+      state.stats.bagsShaken++;
+    }
+  }
+
 
   // ---------- ヒット演出 ----------
   // 種類: 'normal' 通常体当たり / 'spin' 回転アタック / 'damage' 被弾
@@ -3453,7 +3990,7 @@ function createGame() {
 
   // 最後のステージまでクリアしたか
   function isFinished() {
-    return state.cleared && state.stageIndex === STAGES.length - 1;
+    return state.cleared && state.stageIndex === stageList().length - 1;
   }
 
   // ステージクリアのタイムを STAGE_CLEAR_SHOW_TIME 見せたら、次のステージのスタート演出に入る
@@ -3638,9 +4175,8 @@ function createGame() {
   // R のやり直し。全部終わった画面なら STAGE 1 から、それ以外は今のステージの最初から
   function restart() {
     if (isFinished()) {
-      state.stageIndex = 0;
-      state.stageTimes = [];
-      state.stageRanks = [];
+      backToMenu();
+      return;
     }
     state.stageTimes.length = state.stageIndex;
     state.stageRanks.length = state.stageIndex;
@@ -3891,6 +4427,7 @@ function createGame() {
       }
       updateBreakables(gameDt);
       updateFish(gameDt);
+      updateGimmicks(gameDt);
       updateBoss(gameDt);
       updateRoom(gameDt);
       updateSpeedLines(gameDt);
@@ -3908,6 +4445,7 @@ function createGame() {
   }
 
   // どのステージを遊んでいるかと、クリアしたステージのタイム。reset() では消さない
+  state.stageSet = 'normal';   // メニューで選んだステージの組。'normal' いつものステージ / 'gimmick' 新ギミックのステージ
   state.stageIndex = 0;
   state.stageTimes = [];
   state.stageRanks = [];       // クリアしたステージのランク。stageTimes と同じ番号
@@ -3954,6 +4492,8 @@ function createGame() {
     countdownInfo: countdownInfo,
     killFxDuration: killFxDuration,
     startFromTitle: startFromTitle,
+    stageList: stageList,
+    mouseShake: mouseShake,
     skipIntro: skipIntro,
   };
 }
@@ -4168,6 +4708,13 @@ function createRenderer(game, canvas) {
     driftSpin: token('--drift-spin'),
     wall: token('--wall'),
     rockBase: token('--rock-base'),
+    crab: token('--crab'),
+    crabDark: token('--crab-dark'),
+    jelly: token('--jelly'),
+    bottle: token('--bottle'),
+    bag: token('--bag'),
+    current: token('--current'),
+    vent: token('--vent'),
     rockLight: token('--rock-light'),
     rockDark: token('--rock-dark'),
     rockCrack: token('--rock-crack'),
@@ -5305,7 +5852,7 @@ function createRenderer(game, canvas) {
     if (seaweedCache.has(stage)) {
       return seaweedCache.get(stage);
     }
-    const rnd = makeRng(CONFIG.SEAWEED_SEED + STAGES.indexOf(stage));
+    const rnd = makeRng(CONFIG.SEAWEED_SEED + ALL_STAGES.indexOf(stage));
     const list = [];
     // 縁の上の点 p に、水の側を向いた向き (nx, ny) で、確率で海藻を置く
     function tryAdd(p, nx, ny) {
@@ -6027,6 +6574,7 @@ function createRenderer(game, canvas) {
       drawGoal(stage, state.realTime);
     }
     drawBreakables(state);
+    drawGimmicks(state);
     for (const enemy of state.enemies) {
       drawEnemy(enemy);
     }
@@ -6058,6 +6606,7 @@ function createRenderer(game, canvas) {
     beginWorld(frontCtx, layerScale);
     drawSparkles(state);
     drawDriftRings(state);
+    drawBagCover(state);
     drawHitParticles(state);
     drawKillFx(state);
     // 手前の影（画面の下の岩と水草）と風切りの線。画面の座標で描く
@@ -6094,6 +6643,169 @@ function createRenderer(game, canvas) {
       ctx.fillRect(0, 0, w, h);
       ctx.globalAlpha = 1;
     }
+  }
+
+  // ---------- 新ギミックの見た目（v82。絵をもらうまでの仮の図形） ----------
+  function drawGimmicks(state) {
+    const g = state.gim;
+    const t = state.realTime;
+    // 海流：薄い帯と、流れの向きへ動く短い線
+    for (const cur of g.currents) {
+      const len = Math.hypot(cur.b.x - cur.a.x, cur.b.y - cur.a.y);
+      const ux = (cur.b.x - cur.a.x) / len;
+      const uy = (cur.b.y - cur.a.y) / len;
+      ctx.globalAlpha = CONFIG.CURRENT_DRAW_ALPHA;
+      ctx.strokeStyle = colors.current;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = cur.width;
+      ctx.beginPath();
+      ctx.moveTo(cur.a.x, cur.a.y);
+      ctx.lineTo(cur.b.x, cur.b.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = CONFIG.CURRENT_DASH_WIDTH;
+      const offset = (t * CONFIG.CURRENT_PUSH) % CONFIG.CURRENT_DASH_GAP;
+      for (let s = offset; s < len; s += CONFIG.CURRENT_DASH_GAP) {
+        for (const side of [-0.25, 0.25]) {
+          const px = cur.a.x + ux * s - uy * cur.width * side;
+          const py = cur.a.y + uy * s + ux * cur.width * side;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + ux * CONFIG.CURRENT_DASH_LENGTH, py + uy * CONFIG.CURRENT_DASH_LENGTH);
+          ctx.stroke();
+        }
+      }
+    }
+    // 火山口：床の盛り上がりと、上へのぼる泡の柱
+    for (const v of g.vents) {
+      ctx.globalAlpha = CONFIG.CURRENT_DRAW_ALPHA;
+      ctx.fillStyle = colors.vent;
+      ctx.fillRect(v.x - CONFIG.VENT_SIZE.x / 2, v.y - CONFIG.VENT_SIZE.y, CONFIG.VENT_SIZE.x, CONFIG.VENT_SIZE.y);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = colors.rockBase;
+      ctx.beginPath();
+      ctx.moveTo(v.x - CONFIG.VENT_SIZE.x, v.y + CONFIG.VENT_MOUND.y);
+      ctx.lineTo(v.x - CONFIG.VENT_MOUND.x, v.y);
+      ctx.lineTo(v.x + CONFIG.VENT_MOUND.x, v.y);
+      ctx.lineTo(v.x + CONFIG.VENT_SIZE.x, v.y + CONFIG.VENT_MOUND.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = colors.vent;
+      for (let i = 0; i < CONFIG.VENT_BUBBLES; i++) {
+        const k = ((t * CONFIG.VENT_BUBBLE_SPEED / CONFIG.VENT_SIZE.y) + i / CONFIG.VENT_BUBBLES) % 1;
+        const bx = v.x + Math.sin(i * 2.3 + t * 3) * CONFIG.VENT_SIZE.x * 0.3;
+        const by = v.y - k * CONFIG.VENT_SIZE.y;
+        ctx.beginPath();
+        ctx.arc(bx, by, CONFIG.VENT_BUBBLE_RADIUS, 0, TAU);
+        ctx.fill();
+      }
+    }
+    // 垂れ下がる・突き出る岩
+    for (const s of g.stones) {
+      const p = s.tri.points;
+      ctx.fillStyle = colors.rockBase;
+      ctx.strokeStyle = colors.rockDark;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(p[0].x, p[0].y);
+      ctx.lineTo(p[1].x, p[1].y);
+      ctx.lineTo(p[2].x, p[2].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    // カブトガニ：平たい半円の甲羅と、短い足。飛びかかっている間は、飛ぶ向きへ傾ける
+    for (const c of g.crabs) {
+      if (!c.alive) {
+        continue;
+      }
+      ctx.save();
+      ctx.translate(c.pos.x, c.pos.y);
+      if (c.phase === 'lunge') {
+        ctx.rotate(Math.atan2(c.dir.y, c.dir.x) + Math.PI / 2);
+      }
+      const w = CONFIG.CRAB_SIZE.x / 2;
+      const h = CONFIG.CRAB_SIZE.y;
+      ctx.fillStyle = colors.crab;
+      ctx.strokeStyle = colors.crabDark;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w, h, 0, Math.PI, TAU);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // しっぽのとげ
+      ctx.beginPath();
+      ctx.moveTo(w * 0.9, -4);
+      ctx.lineTo(w * 1.6, -h * 0.3);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // クラゲ：半円の傘と、揺れる足
+    for (const j of g.jellies) {
+      const r = CONFIG.JELLY_RADIUS;
+      ctx.globalAlpha = CONFIG.JELLY_ALPHA;
+      ctx.fillStyle = colors.jelly;
+      ctx.beginPath();
+      ctx.ellipse(j.pos.x, j.pos.y, r, r * 0.8, 0, Math.PI, TAU);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = colors.jelly;
+      ctx.lineWidth = 6;
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(j.pos.x + i * r * 0.5, j.pos.y);
+        for (let k = 1; k <= 4; k++) {
+          ctx.lineTo(j.pos.x + i * r * 0.5 + Math.sin(t * 4 + k + i) * 10, j.pos.y + k * r * 0.35);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // ビン：首の細い瓶
+    for (const b of g.bottles) {
+      if (!b.alive) {
+        continue;
+      }
+      const r = CONFIG.BOTTLE_RADIUS;
+      ctx.fillStyle = colors.bottle;
+      ctx.fillRect(b.pos.x - r * 0.6, b.pos.y - r * 0.4, r * 1.2, r * 1.4);
+      ctx.fillRect(b.pos.x - r * 0.25, b.pos.y - r, r * 0.5, r * 0.7);
+    }
+    // ビニール袋：白い半透明の袋と、持ち手
+    for (const bag of g.bags) {
+      if (!bag.alive) {
+        continue;
+      }
+      drawBagShape(bag.pos, CONFIG.BAG_RADIUS, t);
+    }
+  }
+
+  function drawBagShape(pos, r, t) {
+    ctx.globalAlpha = CONFIG.BAG_DRAW_ALPHA;
+    ctx.fillStyle = colors.bag;
+    ctx.beginPath();
+    ctx.ellipse(pos.x, pos.y, r, r * (1 + Math.sin(t * 3) * 0.1), 0, 0, TAU);
+    ctx.fill();
+    ctx.fillRect(pos.x - r * 0.8, pos.y - r * 1.4, r * 0.35, r * 0.6);
+    ctx.fillRect(pos.x + r * 0.45, pos.y - r * 1.4, r * 0.35, r * 0.6);
+    ctx.globalAlpha = 1;
+  }
+
+  // 袋が貼り付いている間：魚の顔の上に袋を描き、まわりを白く覆って見えにくくする
+  function drawBagCover(state) {
+    const fish = state.fish;
+    if (!fish.bagged) {
+      return;
+    }
+    const head = vec2(fish.pos.x + Math.cos(fish.angle) * CONFIG.BAG_HEAD_OFFSET, fish.pos.y + Math.sin(fish.angle) * CONFIG.BAG_HEAD_OFFSET);
+    drawBagShape(head, CONFIG.BAG_RADIUS, state.realTime);
+    ctx.globalAlpha = CONFIG.BAG_COVER_ALPHA;
+    ctx.fillStyle = colors.bag;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, CONFIG.BAG_COVER_RADIUS, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   // 瓦礫と岩。岩の色で塗り、暗い縁と明るい上側を付けて、ごつごつに見せる
@@ -6212,14 +6924,19 @@ function start() {
   const titleStart = document.getElementById('titleStart');
   titleScreen.style.background = 'rgba(4, 19, 27, ' + CONFIG.TITLE_DIM + ')';
   titleStart.style.animationDuration = CONFIG.TITLE_BLINK_PERIOD + 's';
-  function closeTitle() {
-    game.startFromTitle();
+  // setName はステージの組（'normal' か 'gimmick'）
+  function closeTitle(setName) {
+    game.startFromTitle(setName);
     titleScreen.hidden = true;
   }
-  // デモなのでクリックやタップでも始められるようにする
-  titleScreen.addEventListener('pointerdown', function (e) {
+  // メニューのボタン。クリックやタップで選ぶ
+  document.getElementById('choiceNormal').addEventListener('pointerdown', function (e) {
     e.preventDefault();
-    closeTitle();
+    closeTitle('normal');
+  });
+  document.getElementById('choiceGimmick').addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    closeTitle('gimmick');
   });
 
   window.addEventListener('keydown', function (e) {
@@ -6231,9 +6948,14 @@ function start() {
       if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key)) {
         return;
       }
-      // 説明画面ではどのキーでもスタート。そのキーは R や M としても扱わない
+      // 説明画面（メニュー）では 1 / 2 で選ぶ。ほかのキーは何もしない（R などとしても扱わない）
       e.preventDefault();
-      closeTitle();
+      if (e.code === 'Digit1' || e.code === 'Numpad1') {
+        closeTitle('normal');
+      }
+      if (e.code === 'Digit2' || e.code === 'Numpad2') {
+        closeTitle('gimmick');
+      }
       return;
     }
     if (KEY_TO_DIR[e.code] || e.code === CONFIG.DRIFT_KEY) {
@@ -6256,6 +6978,10 @@ function start() {
   window.addEventListener('pointermove', function (e) {
     if (e.pointerType !== 'mouse') {
       return;
+    }
+    // 袋を振りほどく判定に、前回からの横の動きを渡す
+    if (mouseScreen.known) {
+      game.mouseShake(e.clientX - mouseScreen.x);
     }
     mouseScreen.x = e.clientX;
     mouseScreen.y = e.clientY;
@@ -6293,6 +7019,8 @@ function start() {
 
   function updateHud() {
     const s = game.state;
+    // 全部クリアしたあとの R でメニューに戻った時に、説明画面をまた出す
+    titleScreen.hidden = !s.title;
     hudTime.textContent = s.gameTime.toFixed(2);
     // 残り時間。制限のないステージ（ボス戦）では隠す。前触れが始まったら赤く点滅
     const hasLimit = s.timeLeft !== null;
@@ -6393,24 +7121,26 @@ function start() {
         resultTitle.textContent = 'ALL CLEAR';
         let total = 0;
         const lines = [];
-        for (let i = 0; i < STAGES.length; i++) {
+        // 遊んだ方のステージの組だけを並べる
+        const list = game.stageList();
+        for (let i = 0; i < list.length; i++) {
           const t = s.stageTimes[i];
           // 途中のステージから始めた時などで記録がなければ「--」にして、合計には足さない
           if (t === undefined) {
-            lines.push(STAGES[i].label + '　--');
+            lines.push(list[i].label + '　--');
           } else {
             total += t;
             let rankText = '';
             if (s.stageRanks[i] !== undefined) {
               rankText = '　' + s.stageRanks[i];
             }
-            lines.push(STAGES[i].label + '　' + t.toFixed(2) + rankText);
+            lines.push(list[i].label + '　' + t.toFixed(2) + rankText);
           }
         }
         resultTime.textContent = '合計 ' + total.toFixed(2);
         resultDetail.hidden = false;
         resultDetail.innerHTML = lines.join('<br>');
-        resultSub.textContent = 'R で STAGE 1 から';
+        resultSub.textContent = 'R でメニューへ';
       } else {
         resultTitle.textContent = 'STAGE CLEAR';
         resultDetail.hidden = true;
