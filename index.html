@@ -49,6 +49,8 @@
     --wall: #123b48;        /* 背景の格子の線 */
     --crab: #7a5a44;        /* カブトガニの甲羅（仮の図形） */
     --crab-dark: #3b2a22;   /* カブトガニの縁 */
+    --crab-belly: #d9b48f;  /* カブトガニの裏側（腹） */
+    --crab-bite: #e0303a;   /* 食べた瞬間に光らせる色 */
     --jelly: #f29cc8;       /* クラゲ */
     --bottle: #6fbf73;      /* ゴミのビン */
     --bag: #f4f4f4;         /* ゴミのビニール袋 */
@@ -775,15 +777,18 @@ const CONFIG = {
   // ===== 新ギミック（v82。新ギミックのステージで使う） =====
   TRAP_SLOW_RATE: 0.5,          // 倍。減速の罠（カブトガニ・岩・ビン）に当たった時の速さの倍率
   TRAP_SLOW_TIME: 1.0,          // 秒。減速が続く時間
-  TRAP_HIT_COOLDOWN: 0.4,       // 秒。同じカブトガニ・クラゲに続けて当たったことにしない時間（触れたままで毎フレーム当たらないように）
+  TRAP_HIT_COOLDOWN: 0.4,       // 秒。同じクラゲに続けて当たったことにしない時間（触れたままで毎フレーム当たらないように）
   TRAP_SHAKE: 6,                // px。減速の罠に当たった時の画面の揺れ
-  CRAB_TRIGGER_RADIUS: 400,     // px。カブトガニが起き上がって飛びかかる距離
-  CRAB_LUNGE_SPEED: 900,        // px/秒。飛びかかる速さ
-  CRAB_LUNGE_TIME: 0.5,         // 秒。飛びかかっている時間
-  CRAB_RETURN_SPEED: 300,       // px/秒。元の場所へ戻る速さ
-  CRAB_REST_TIME: 1.0,          // 秒。戻ったあと、次に飛びかかれるまで休む時間
-  CRAB_SIZE: vec2(160, 60),     // px。甲羅の幅と高さ
-  CRAB_HIT_RADIUS: 70,          // px。当たりの半径
+  CRAB_TRIGGER_RADIUS: 300,     // px。後ろの端（起き上がる軸）からこの距離に魚が入ると、カブトガニが起き上がる
+  CRAB_RISE_TIME: 0.15,         // 秒。後ろの端を軸にパカッと起き上がるまでの時間
+  CRAB_OPEN_DEG: 110,           // 度。起き上がる角度（地面からの開き）
+  CRAB_HOLD_TIME: 0.25,         // 秒。起き上がったまま裏側を見せている時間
+  CRAB_SNAP_TIME: 0.12,         // 秒。パクっと閉じて地面に戻るまでの時間
+  CRAB_REST_TIME: 1.0,          // 秒。閉じたあと、次に起き上がれるまで休む時間
+  CRAB_SIZE: vec2(200, 60),     // px。甲羅の長さ（軸から頭まで）と厚さ。厚さは当たりの太さにも使う
+  CRAB_FACE_DIR: -1,            // 頭の向きの決まり（-1 左向き / 1 右向き）。ステージに置く時に face で1匹ずつ変えられる
+  CRAB_BITE_FLASH: 0.25,        // 秒。食べた瞬間に裏側を赤く光らせる時間
+  CRAB_LEGS: 5,                 // 本。裏側に描く足の数（仮の図形）
   ROCK_SPIKE_SIZE: vec2(90, 260), // px。垂れ下がる・突き出る岩の根元の幅と長さ
   ROCK_SPIKE_BURY: 40,          // px。根元を壁にめり込ませる深さ（すき間を作らないため）
   JELLY_RADIUS: 70,             // px。クラゲの大きさ（当たりの半径）
@@ -1453,7 +1458,8 @@ const STAGE_G1 = courseStage({
   corridors: [{ points: G1, width: 640 }],
   goal: vec2(5000, 0), timeLimit: 11.5, /* 秒。ボットのタイム（7.7秒）の約1.5倍 */
   enemies: [vec2(900, -150), vec2(2500, -180), vec2(3900, -150)],
-  gimmicks: { crabs: [vec2(1500, 290), vec2(2200, 290), vec2(3000, 290), vec2(3500, 290), vec2(4400, 290)] },
+  // カブトガニは後ろの端（起き上がる軸）の位置で置く。床は y=320
+  gimmicks: { crabs: [vec2(1700, 320), vec2(2400, 320), vec2(3200, 320), vec2(3700, 320), vec2(4600, 320)] },
   botPath: [vec2(0, -120), vec2(5000, -120), vec2(5000, 0)],
 });
 
@@ -2643,8 +2649,13 @@ function createGame() {
       return [];
     }
     state.gim = {
+      // pivot は後ろの端の地面に触れている所（起き上がる時の軸）。face は頭の向き（-1 左 / 1 右）
       crabs: list('crabs').map(function (p) {
-        return { base: vec2(p.x, p.y), pos: vec2(p.x, p.y), phase: 'idle', t: 0, dir: vec2(0, -1), alive: true, hitCooldown: 0 };
+        let face = CONFIG.CRAB_FACE_DIR;
+        if (p.face !== undefined) {
+          face = p.face;
+        }
+        return { pivot: vec2(p.x, p.y), face: face, open: 0, phase: 'idle', t: 0, ate: false, alive: true, biteFlash: 0 };
       }),
       stones: list('stones').map(function (s) {
         return { tri: stoneTriangle(s), base: s.pos, dirDeg: s.dirDeg };
@@ -2677,6 +2688,27 @@ function createGame() {
       vec2(s.pos.x + ux * len, s.pos.y + uy * len),
       vec2(s.pos.x + uy * half - ux * back, s.pos.y - ux * half - uy * back),
     ] };
+  }
+
+  // カブトガニの体の向き（軸から頭への単位ベクトル）。open が0なら地面に沿って頭の側、開くほど上へ起き上がる
+  function crabAxis(c) {
+    return vec2(c.face * Math.cos(c.open), -Math.sin(c.open));
+  }
+
+  // カブトガニの体の真ん中
+  function crabCenter(c) {
+    const u = crabAxis(c);
+    const half = CONFIG.CRAB_SIZE.x / 2;
+    return vec2(c.pivot.x + u.x * half, c.pivot.y + u.y * half);
+  }
+
+  // 点 p（半径 r）がカブトガニの体（軸から頭までの線分に、厚みの半分を足した形）に触れているか
+  function crabTouches(c, p, r) {
+    const u = crabAxis(c);
+    const along = clamp((p.x - c.pivot.x) * u.x + (p.y - c.pivot.y) * u.y, 0, CONFIG.CRAB_SIZE.x);
+    const qx = c.pivot.x + u.x * along;
+    const qy = c.pivot.y + u.y * along;
+    return Math.hypot(p.x - qx, p.y - qy) <= CONFIG.CRAB_SIZE.y / 2 + r;
   }
 
   // 減速の罠（カブトガニ・岩・ビン）に当たった。しばらく速さを TRAP_SLOW_RATE 倍にする
@@ -2764,60 +2796,61 @@ function createGame() {
     fish.knock.y *= keep;
     clampToStage(fish.pos);
 
-    // カブトガニ：伏せている → 近づくと魚の方へ飛びかかる → 元の場所へ戻る
+    // カブトガニ：地面に張り付いている → 魚が近づくと、後ろの端（地面に触れている所）を軸にパカッと起き上がり、
+    // 裏側を魚に見せながらパクっと閉じる → 閉じて少し休む。起き上がって閉じるまでの間に体に触れたら食べられる（減速）
     for (const c of g.crabs) {
       if (!c.alive) {
         continue;
       }
-      if (c.hitCooldown > 0) {
-        c.hitCooldown -= dt;
+      if (c.biteFlash > 0) {
+        c.biteFlash -= dt;
       }
       if (c.phase === 'idle') {
-        if (dist(c.pos, fish.pos) <= CONFIG.CRAB_TRIGGER_RADIUS) {
-          const d = Math.max(dist(c.pos, fish.pos), 1);
-          c.dir = vec2((fish.pos.x - c.pos.x) / d, (fish.pos.y - c.pos.y) / d);
-          c.phase = 'lunge';
+        if (dist(c.pivot, fish.pos) <= CONFIG.CRAB_TRIGGER_RADIUS) {
+          c.phase = 'rise';
           c.t = 0;
-        }
-      } else if (c.phase === 'lunge') {
-        c.t += dt;
-        c.pos.x += c.dir.x * CONFIG.CRAB_LUNGE_SPEED * dt;
-        c.pos.y += c.dir.y * CONFIG.CRAB_LUNGE_SPEED * dt;
-        if (c.t >= CONFIG.CRAB_LUNGE_TIME) {
-          c.phase = 'return';
+          c.ate = false;
         }
       } else {
-        const d = dist(c.pos, c.base);
-        const step = CONFIG.CRAB_RETURN_SPEED * dt;
-        if (d <= step) {
-          c.pos = vec2(c.base.x, c.base.y);
-          c.phase = 'rest';
-          c.t = 0;
-        } else {
-          c.pos.x += (c.base.x - c.pos.x) / d * step;
-          c.pos.y += (c.base.y - c.pos.y) / d * step;
-        }
-      }
-      // 戻ったあとは少し休んでから、また近づくのを待つ
-      if (c.phase === 'rest') {
         c.t += dt;
-        if (c.t >= CONFIG.CRAB_REST_TIME) {
+        if (c.phase === 'rise') {
+          c.open = CONFIG.CRAB_OPEN_DEG * DEG * clamp(c.t / CONFIG.CRAB_RISE_TIME, 0, 1);
+          if (c.t >= CONFIG.CRAB_RISE_TIME) {
+            c.phase = 'hold';
+            c.t = 0;
+          }
+        } else if (c.phase === 'hold') {
+          if (c.t >= CONFIG.CRAB_HOLD_TIME) {
+            c.phase = 'snap';
+            c.t = 0;
+          }
+        } else if (c.phase === 'snap') {
+          c.open = CONFIG.CRAB_OPEN_DEG * DEG * (1 - clamp(c.t / CONFIG.CRAB_SNAP_TIME, 0, 1));
+          if (c.t >= CONFIG.CRAB_SNAP_TIME) {
+            c.phase = 'rest';
+            c.t = 0;
+            c.open = 0;
+          }
+        } else if (c.t >= CONFIG.CRAB_REST_TIME) {
+          // rest：休み終わったら、また近づくのを待つ
           c.phase = 'idle';
         }
       }
-      if (dist(c.pos, fish.pos) <= CONFIG.CRAB_HIT_RADIUS + CONFIG.FISH_RADIUS) {
-        if (isSpinning()) {
-          // 回転で当てれば倒せる。雑魚を回転で倒した時と同じ扱い
-          c.alive = false;
-          addBonus('spinBonus', CONFIG.SPIN_BONUS_PER_HIT);
-          triggerHitstop('spin');
-          spawnKillFx(c.pos, 'spin');
-          state.stats.spinKills++;
-          refillScore(CONFIG.SCORE_KILL_REFILL_SPIN);
-        } else if (c.hitCooldown <= 0) {
-          slowFish();
-          c.hitCooldown = CONFIG.TRAP_HIT_COOLDOWN;
-        }
+      // 体（軸から頭までの線分に厚みを持たせた形）に触れているか
+      const touching = crabTouches(c, fish.pos, CONFIG.FISH_RADIUS);
+      if (touching && isSpinning()) {
+        // 回転で当てれば倒せる。雑魚を回転で倒した時と同じ扱い
+        c.alive = false;
+        addBonus('spinBonus', CONFIG.SPIN_BONUS_PER_HIT);
+        triggerHitstop('spin');
+        spawnKillFx(crabCenter(c), 'spin');
+        state.stats.spinKills++;
+        refillScore(CONFIG.SCORE_KILL_REFILL_SPIN);
+      } else if (touching && !c.ate && (c.phase === 'rise' || c.phase === 'hold' || c.phase === 'snap')) {
+        // パクっと食べられた。捕まらずに減速するだけ。1回の起き上がりで1回まで
+        c.ate = true;
+        c.biteFlash = CONFIG.CRAB_BITE_FLASH;
+        slowFish();
       }
     }
 
@@ -4710,6 +4743,8 @@ function createRenderer(game, canvas) {
     rockBase: token('--rock-base'),
     crab: token('--crab'),
     crabDark: token('--crab-dark'),
+    crabBelly: token('--crab-belly'),
+    crabBite: token('--crab-bite'),
     jelly: token('--jelly'),
     bottle: token('--bottle'),
     bag: token('--bag'),
@@ -6612,6 +6647,9 @@ function createRenderer(game, canvas) {
     // 手前の影（画面の下の岩と水草）と風切りの線。画面の座標で描く
     beginScreen(frontCtx);
     drawForeground(camX, layerScale, lw, lh, state.realTime);
+    beginWorld(frontCtx, layerScale);
+    drawCrabs(state);
+    beginScreen(frontCtx);
     drawSpeedLines(state, layerScale);
     if (pixel) {
       flushLayer(pixelFront, pixelFrontCtx, true);
@@ -6714,33 +6752,6 @@ function createRenderer(game, canvas) {
       ctx.fill();
       ctx.stroke();
     }
-    // カブトガニ：平たい半円の甲羅と、短い足。飛びかかっている間は、飛ぶ向きへ傾ける
-    for (const c of g.crabs) {
-      if (!c.alive) {
-        continue;
-      }
-      ctx.save();
-      ctx.translate(c.pos.x, c.pos.y);
-      if (c.phase === 'lunge') {
-        ctx.rotate(Math.atan2(c.dir.y, c.dir.x) + Math.PI / 2);
-      }
-      const w = CONFIG.CRAB_SIZE.x / 2;
-      const h = CONFIG.CRAB_SIZE.y;
-      ctx.fillStyle = colors.crab;
-      ctx.strokeStyle = colors.crabDark;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, w, h, 0, Math.PI, TAU);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      // しっぽのとげ
-      ctx.beginPath();
-      ctx.moveTo(w * 0.9, -4);
-      ctx.lineTo(w * 1.6, -h * 0.3);
-      ctx.stroke();
-      ctx.restore();
-    }
     // クラゲ：半円の傘と、揺れる足
     for (const j of g.jellies) {
       const r = CONFIG.JELLY_RADIUS;
@@ -6778,6 +6789,72 @@ function createRenderer(game, canvas) {
         continue;
       }
       drawBagShape(bag.pos, CONFIG.BAG_RADIUS, t);
+    }
+  }
+
+  // カブトガニ。床に張り付いているので、画面の下の手前の影（岩と水草）に隠れないよう、手前の影より後に描く
+  function drawCrabs(state) {
+    const g = state.gim;
+    // カブトガニ：後ろの端を軸に、体ごと回して描く。表（甲羅）は上側、裏（足とえらのひだ）は地面側。
+    // 起き上がると裏側が魚の方を向く。地面に張り付いている間は裏側を描かない（地面に隠れている）
+    for (const c of g.crabs) {
+      if (!c.alive) {
+        continue;
+      }
+      const L = CONFIG.CRAB_SIZE.x;
+      const H = CONFIG.CRAB_SIZE.y;
+      ctx.save();
+      ctx.translate(c.pivot.x, c.pivot.y);
+      // 頭の向きに合わせて左右を反転してから、起き上がる角度だけ回す（反転したあとの -open は、見た目で地面から上へ開く向き）
+      ctx.scale(c.face, 1);
+      ctx.rotate(-c.open);
+      // ここからは「x が軸から頭へ、y が上（-）が甲羅・下（+）が裏」の向き
+      if (c.open > 0) {
+        // 裏側：薄い色の腹と、並んだ足、えらのひだ
+        ctx.fillStyle = colors.crabBelly;
+        ctx.beginPath();
+        ctx.ellipse(L / 2, 0, L / 2, H * 0.45, 0, 0, Math.PI);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = colors.crabDark;
+        ctx.lineWidth = 5;
+        for (let i = 0; i < CONFIG.CRAB_LEGS; i++) {
+          const x = L * (0.2 + 0.6 * i / (CONFIG.CRAB_LEGS - 1));
+          ctx.beginPath();
+          ctx.moveTo(x, H * 0.15);
+          ctx.lineTo(x - L * 0.06, H * 0.7);
+          ctx.lineTo(x + L * 0.02, H * 0.95);
+          ctx.stroke();
+        }
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.arc(L * 0.25, H * 0.1, L * 0.05 + i * L * 0.03, 0, Math.PI);
+          ctx.stroke();
+        }
+        if (c.biteFlash > 0) {
+          ctx.globalAlpha = c.biteFlash / CONFIG.CRAB_BITE_FLASH;
+          ctx.fillStyle = colors.crabBite;
+          ctx.beginPath();
+          ctx.ellipse(L / 2, 0, L / 2, H * 0.5, 0, 0, Math.PI);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+      // 表：平たい半円の甲羅と、後ろのとげ（しっぽ）
+      ctx.fillStyle = colors.crab;
+      ctx.strokeStyle = colors.crabDark;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.ellipse(L / 2, 0, L / 2, H, 0, Math.PI, TAU);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, -H * 0.1);
+      ctx.lineTo(-L * 0.35, -H * 0.2);
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
