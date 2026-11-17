@@ -780,10 +780,10 @@ const CONFIG = {
   TRAP_HIT_COOLDOWN: 0.4,       // 秒。同じクラゲに続けて当たったことにしない時間（触れたままで毎フレーム当たらないように）
   TRAP_SHAKE: 6,                // px。減速の罠に当たった時の画面の揺れ
   CRAB_TRIGGER_RADIUS: 300,     // px。後ろの端（起き上がる軸）からこの距離に魚が入ると、カブトガニが起き上がる
-  CRAB_RISE_TIME: 0.15,         // 秒。後ろの端を軸にパカッと起き上がるまでの時間
+  CRAB_RISE_TIME: 0.06,         // 秒。後ろの端を軸にパカッと起き上がるまでの時間
   CRAB_OPEN_DEG: 110,           // 度。起き上がる角度（地面からの開き）
-  CRAB_HOLD_TIME: 0.25,         // 秒。起き上がったまま裏側を見せている時間
-  CRAB_SNAP_TIME: 0.12,         // 秒。パクっと閉じて地面に戻るまでの時間
+  CRAB_HOLD_TIME: 0,            // 秒。起き上がったまま裏側を見せている時間
+  CRAB_SNAP_TIME: 0.06,         // 秒。パクっと閉じて地面に戻るまでの時間
   CRAB_REST_TIME: 1.0,          // 秒。閉じたあと、次に起き上がれるまで休む時間
   CRAB_SIZE: vec2(200, 60),     // px。甲羅の長さ（軸から頭まで）と厚さ。厚さは当たりの太さにも使う
   CRAB_FACE_DIR: -1,            // 頭の向きの決まり（-1 左向き / 1 右向き）。ステージに置く時に face で1匹ずつ変えられる
@@ -792,8 +792,10 @@ const CONFIG = {
   ROCK_SPIKE_SIZE: vec2(90, 260), // px。垂れ下がる・突き出る岩の根元の幅と長さ
   ROCK_SPIKE_BURY: 40,          // px。根元を壁にめり込ませる深さ（すき間を作らないため）
   JELLY_RADIUS: 70,             // px。クラゲの大きさ（当たりの半径）
-  JELLY_BOB: vec2(0, 120),      // px。クラゲと袋が漂う幅（横, 縦）
-  JELLY_BOB_PERIOD: 3,          // 秒。漂う1往復の時間
+  JELLY_BOB: vec2(0, 60),       // px。クラゲが漂う幅（横, 縦）
+  JELLY_BOB_PERIOD: 6,          // 秒。クラゲが漂う1往復の時間
+  BAG_BOB: vec2(0, 120),        // px。袋が漂う幅（横, 縦）
+  BAG_BOB_PERIOD: 3,            // 秒。袋が漂う1往復の時間
   JELLY_PHASE_STEP: 0.7,        // 秒。並んだクラゲの揺れをずらす量
   JELLY_BOUNCE_SPEED: 700,      // px/秒。跳ね返された時に押し飛ばされる速さ
   JELLY_KNOCK_DECAY: 4,         // 1/秒。押し飛ばされた勢いが弱まる速さ
@@ -801,7 +803,7 @@ const CONFIG = {
   BOTTLE_RADIUS: 45,            // px。ビンの大きさ
   BAG_RADIUS: 60,               // px。袋の大きさ
   BAG_DRIFT_SPEED: 60,          // px/秒。袋が左へ流れてくる速さ
-  BAG_SLOW_RATE: 0.7,           // 倍。袋が貼り付いている間の速さの倍率
+  BAG_SLOW_RATE: 0.15,          // 倍。袋が貼り付いている間の速さの倍率
   BAG_SHAKE_COUNT: 6,           // 回。袋が取れるまでの、マウスを左右に切り返す回数
   BAG_SHAKE_WINDOW: 1.5,        // 秒。切り返しを数える時間の幅
   BAG_SHAKE_MIN_MOVE: 40,       // px。1回の振りと数えるマウスの横の動きの大きさ（画面の px）
@@ -809,16 +811,26 @@ const CONFIG = {
   BAG_COVER_RADIUS: 260,        // px。覆う範囲の半径
   BAG_HEAD_OFFSET: 90,          // px。袋を貼り付けて描く、魚の中心から頭の方への距離
   BAG_DRAW_ALPHA: 0.75,         // 袋の濃さ
-  BREAK_WALL_ROCKS: 3,          // 個。壊せる壁に積む置き岩の数
-  BREAK_WALL_GAP: 140,          // px。積む岩の間隔
+  BREAK_WALL_SIZE: vec2(120, 460), // px。ひびの入った壁の厚さと高さ。道幅より少し高くして、上下を壁にめり込ませる
+  BREAK_WALL_CRACKS: 6,         // 本。壁の面に描くひびの線の数
+  BOTTLE_BOOM_RADIUS: 160,      // px。ビンが爆発した時の光の輪の大きさ
+  BOTTLE_BOOM_TIME: 0.4,        // 秒。爆発の演出の長さ
+  BOTTLE_BOOM_SHAKE: 14,        // px。爆発の画面の揺れ
+  BOTTLE_BOOM_SHARDS: 8,        // 個。飛び散る破片の数
+  SPEED_BURST_TIME: 0.5,        // 秒。加速が入った時に、画面全体に風切りの線を流す時間
+  SPEED_BURST_LINES: 36,        // 本。画面に流す線の数
+  SPEED_BURST_LENGTH: vec2(160, 420), // px。線の長さの最小と最大（画面の px）
+  SPEED_BURST_SPEED: 3000,      // px/秒。線が流れる速さ（画面の px）
+  SPEED_BURST_ALPHA: 0.8,       // 線の濃さ（出始め。だんだん薄くなる）
+  SPEED_BURST_WIDTH: 3,         // px。線の太さ（画面の px）
   CURRENT_PUSH: 350,            // px/秒。海流が流れの向きへ押す速さ
   CURRENT_BOOST: 250,           // px/秒。海流に乗っている間、魚の速さに足す量
   CURRENT_DRAW_ALPHA: 0.25,     // 海流と火山口の帯の濃さ
   CURRENT_DASH_WIDTH: 6,        // px。流れの向きへ動く線の太さ
   CURRENT_DASH_LENGTH: 70,      // px。線の長さ
   CURRENT_DASH_GAP: 180,        // px。線の間隔
-  VENT_FORCE: 1200,             // px/秒²。火山口が押し上げる強さ（上向きの速さがたまる量）
-  VENT_MAX_SPEED: 900,          // px/秒。押し上げられる速さの上限
+  VENT_FORCE: 2400,             // px/秒²。火山口が押し上げる強さ（上向きの速さがたまる量）
+  VENT_MAX_SPEED: 1600,         // px/秒。押し上げられる速さの上限
   VENT_DECAY: 1500,             // px/秒²。範囲から出たあと、押し上げる速さが抜ける量
   VENT_SIZE: vec2(260, 900),    // px。噴き上げる範囲の幅と高さ（穴から上へ）
   VENT_MOUND: vec2(70, 60),     // px。床の盛り上がりの、穴の半分の幅と高さ
@@ -1107,16 +1119,6 @@ function pathLength(points) {
 }
 
 // 折れ線の始まりから距離 s の位置。side は進む向きの右側へずらす距離（負なら左）
-// 壊せる壁。置き岩を縦に BREAK_WALL_ROCKS 個、BREAK_WALL_GAP おきに積む。center が壁の真ん中
-function breakWall(center, seed) {
-  const list = [];
-  for (let i = 0; i < CONFIG.BREAK_WALL_ROCKS; i++) {
-    const y = center.y + (i - (CONFIG.BREAK_WALL_ROCKS - 1) / 2) * CONFIG.BREAK_WALL_GAP;
-    list.push(breakable(center.x, y, 'static', seed + i * 2, 180));
-  }
-  return list;
-}
-
 function pathPoint(points, s, side) {
   let rest = s;
   for (let i = 1; i < points.length; i++) {
@@ -1520,8 +1522,8 @@ const STAGE_G6 = courseStage({
   corridors: [{ points: G6_MAIN, width: 420 }, { points: G6_SHORT, width: 420 }],
   goal: vec2(5200, 0), timeLimit: 14, /* 秒。ボットのタイム（7.9秒）の約1.5倍。回り道を通っても間に合うよう少し長め */
   enemies: [vec2(2600, -1200), vec2(4500, 0)],
-  // 近道をふさぐ壁。置き岩を縦に BREAK_WALL_ROCKS 個積んで作る
-  breakables: breakWall(vec2(2000, 0), 61),
+  // 近道をふさぐ、ひびの入った壁。回転で一度当てれば壊れる
+  gimmicks: { walls: [vec2(2000, 0)] },
   botPath: [vec2(0, 0), vec2(5200, 0)],
 });
 
@@ -1792,6 +1794,7 @@ function createGame() {
     state.bossDownAt = -1;     // ボスを倒した時の実時間。-1はまだ倒していない
     state.timeStopped = false; // タイムを止めたか（ボスを倒した瞬間に止める）
     state.screenFlash = 0;     // 画面全体を白く光らせる残り時間
+    state.speedBurst = 0;      // 秒（実時間）。加速が入った時に画面全体の風切りを流す残り時間
     state.speedLines = [];     // 風切りの線。{ x, y: 画面の座標, len, age, life }
     state.speedLineCarry = 0;  // 短い線を流し続ける時の、出しきれなかった端数（本）
     state.prevSpeed = 0;       // 前のフレームの速さ。グッと上がったかを見る
@@ -2156,6 +2159,8 @@ function createGame() {
   function addBonus(name, amount) {
     const fish = state.fish;
     fish[name] += amount;
+    // 倒した・壊したで速さが積まれた。画面全体に風切りを流して、加速したと分かるようにする
+    startSpeedBurst();
     // 積んだので減り始めるまでの猶予を戻す。連続で倒し続ければ速度を保てる
     fish[name + 'Hold'] = CONFIG.SPIN_BONUS_HOLD_TIME;
     fish[name + 'DecayFrom'] = 0;
@@ -2533,6 +2538,7 @@ function createGame() {
     if (isDriftCharged() && isPlaying()) {
       fish.driftBoost = CONFIG.DRIFT_BOOST_SPEED;
       fish.driftBoostHold = CONFIG.DRIFT_BOOST_HOLD;
+      startSpeedBurst();
       // 解放で一気に走り出したいので、ブレーキもその場で解く
       fish.driftBrake = 1;
       startSpin('drift', CONFIG.DRIFT_FORCE_SPIN);
@@ -2671,6 +2677,11 @@ function createGame() {
       }),
       currents: list('currents'),
       vents: list('vents'),
+      // ひびの入った壁。当たりは岩と同じ多角形（長方形）で持つ。ひびの線は置いた時に一度だけ作る
+      walls: list('walls').map(function (p, i) {
+        return { pos: vec2(p.x, p.y), alive: true, rock: wallRect(p), cracks: wallCracks(p, i) };
+      }),
+      booms: [],               // ビンの爆発の演出。{ pos, t, shards: [{ dir, spin }] }
     };
   }
 
@@ -2688,6 +2699,60 @@ function createGame() {
       vec2(s.pos.x + ux * len, s.pos.y + uy * len),
       vec2(s.pos.x + uy * half - ux * back, s.pos.y - ux * half - uy * back),
     ] };
+  }
+
+  // ひびの入った壁の長方形（岩と同じ形式の多角形）
+  function wallRect(p) {
+    const hw = CONFIG.BREAK_WALL_SIZE.x / 2;
+    const hh = CONFIG.BREAK_WALL_SIZE.y / 2;
+    return { points: [vec2(p.x - hw, p.y - hh), vec2(p.x + hw, p.y - hh), vec2(p.x + hw, p.y + hh), vec2(p.x - hw, p.y + hh)] };
+  }
+
+  // 壁の面のひび。真ん中あたりから、ぎざぎざに外へ伸びる線を BREAK_WALL_CRACKS 本
+  function wallCracks(p, seed) {
+    const rnd = makeRng(CONFIG.SEAWEED_SEED + seed);
+    const list = [];
+    for (let i = 0; i < CONFIG.BREAK_WALL_CRACKS; i++) {
+      const pts = [vec2(p.x + (rnd() - 0.5) * CONFIG.BREAK_WALL_SIZE.x * 0.3, p.y + (rnd() - 0.5) * CONFIG.BREAK_WALL_SIZE.y * 0.3)];
+      const ang = TAU * i / CONFIG.BREAK_WALL_CRACKS + rnd() * 0.5;
+      for (let k = 1; k <= 4; k++) {
+        const last = pts[pts.length - 1];
+        const a = ang + (rnd() - 0.5) * 1.2;
+        const step = CONFIG.BREAK_WALL_SIZE.y * 0.09;
+        pts.push(vec2(
+          clamp(last.x + Math.cos(a) * step, p.x - CONFIG.BREAK_WALL_SIZE.x / 2, p.x + CONFIG.BREAK_WALL_SIZE.x / 2),
+          last.y + Math.sin(a) * step
+        ));
+      }
+      list.push(pts);
+    }
+    return list;
+  }
+
+  // ビンの爆発。光の輪と破片の演出を出し、画面を揺らす
+  function explodeBottle(pos) {
+    const shards = [];
+    for (let i = 0; i < CONFIG.BOTTLE_BOOM_SHARDS; i++) {
+      shards.push({ dir: TAU * i / CONFIG.BOTTLE_BOOM_SHARDS + 0.3, spin: i });
+    }
+    state.gim.booms.push({ pos: vec2(pos.x, pos.y), t: 0, shards: shards });
+    state.shake = CONFIG.SHAKE_DURATION;
+    state.shakeDuration = CONFIG.SHAKE_DURATION;
+    state.shakeAmp = CONFIG.BOTTLE_BOOM_SHAKE;
+  }
+
+  // 円（中心 p、半径 r）が、ひびの入った壁の長方形（真ん中 c）に触れているか
+  function circleTouchesRect(p, r, c) {
+    const hw = CONFIG.BREAK_WALL_SIZE.x / 2;
+    const hh = CONFIG.BREAK_WALL_SIZE.y / 2;
+    const qx = clamp(p.x, c.x - hw, c.x + hw);
+    const qy = clamp(p.y, c.y - hh, c.y + hh);
+    return Math.hypot(p.x - qx, p.y - qy) <= r;
+  }
+
+  // 加速が入った時に、画面全体の風切りの線を SPEED_BURST_TIME 秒流す
+  function startSpeedBurst() {
+    state.speedBurst = CONFIG.SPEED_BURST_TIME;
   }
 
   // カブトガニの体の向き（軸から頭への単位ベクトル）。open が0なら地面に沿って頭の側、開くほど上へ起き上がる
@@ -2763,7 +2828,8 @@ function createGame() {
       fish.slowTimer -= dt;
     }
 
-    // 海流：帯の中にいる間、流れの向きへ押し、速さに CURRENT_BOOST を足す
+    // 海流：帯の中にいる間、流れの向きへ押し、速さに CURRENT_BOOST を足す。入った瞬間に風切りを流す
+    const wasInCurrent = fish.inCurrent;
     fish.inCurrent = false;
     for (const cur of g.currents) {
       if (insideCurrent(fish.pos, cur)) {
@@ -2772,6 +2838,10 @@ function createGame() {
         fish.pos.x += (cur.b.x - cur.a.x) / len * CONFIG.CURRENT_PUSH * dt;
         fish.pos.y += (cur.b.y - cur.a.y) / len * CONFIG.CURRENT_PUSH * dt;
       }
+    }
+
+    if (fish.inCurrent && !wasInCurrent) {
+      startSpeedBurst();
     }
 
     // 火山口：範囲の中にいる間、上向きの速さがたまっていき、出ると少しずつ抜ける。魚の操作とは別に足すので逆らえない
@@ -2891,24 +2961,36 @@ function createGame() {
       pushFishOutOfCircle(j.pos, CONFIG.JELLY_RADIUS);
     }
 
-    // ビン：その場に浮かぶ。回転で当てれば壊せる。それ以外は押し出して減速
+    // ビン：その場に浮かぶ。当たると爆発して消える（爆発は演出）。回転で当てた時は減速しない。それ以外は減速
     for (const b of g.bottles) {
       if (!b.alive) {
         continue;
       }
       if (dist(b.pos, fish.pos) <= CONFIG.BOTTLE_RADIUS + CONFIG.FISH_RADIUS) {
+        b.alive = false;
+        explodeBottle(b.pos);
         if (isSpinning()) {
-          b.alive = false;
-          triggerHitstop('normal');
-          spawnKillFx(b.pos, 'normal');
           state.stats.bottlesBroken++;
         } else {
-          pushFishOutOfCircle(b.pos, CONFIG.BOTTLE_RADIUS);
-          if (fish.slowTimer <= 0) {
-            slowFish();
-          }
+          slowFish();
         }
       }
+    }
+    for (const boom of g.booms) {
+      boom.t += dt;
+    }
+    g.booms = g.booms.filter(function (boom) { return boom.t < CONFIG.BOTTLE_BOOM_TIME; });
+
+    // ひびの入った壁：回転で当てれば壊れる（岩を壊した時と同じ扱い）。それ以外は岩と同じく押し出す
+    for (const w of g.walls) {
+      if (!w.alive) {
+        continue;
+      }
+      if (isSpinning() && circleTouchesRect(fish.pos, CONFIG.FISH_RADIUS, w.pos)) {
+        breakBreakable(w);
+        continue;
+      }
+      pushOutOfRock(fish.pos, w.rock, CONFIG.FISH_RADIUS);
     }
 
     // ビニール袋：左へゆっくり流れてくる。当たると顔に貼り付く（回転していても貼り付く）
@@ -2918,7 +3000,7 @@ function createGame() {
       }
       bag.phase += dt;
       bag.pos.x -= CONFIG.BAG_DRIFT_SPEED * dt;
-      bag.pos.y = bag.home.y + CONFIG.JELLY_BOB.y * Math.sin(bag.phase * TAU / CONFIG.JELLY_BOB_PERIOD);
+      bag.pos.y = bag.home.y + CONFIG.BAG_BOB.y * Math.sin(bag.phase * TAU / CONFIG.BAG_BOB_PERIOD);
       if (!fish.bagged && dist(bag.pos, fish.pos) <= CONFIG.BAG_RADIUS + CONFIG.FISH_RADIUS) {
         bag.alive = false;
         fish.bagged = true;
@@ -3767,12 +3849,14 @@ function createGame() {
       triggerHitstop('spin');
       spawnHitFx(contact, 'spin', CONFIG.HIT_FX_SCALE_BOSS_HIT);
       onDriftDashHit();
+      startSpeedBurst();
     } else if (billHit || isFrontalHit(boss.pos)) {
       boss.hp -= CONFIG.BOSS_DAMAGE_NORMAL + speedDamage;
       boss.flash = CONFIG.FLASH_DURATION;
       triggerHitstop('normal');
       spawnHitFx(contact, 'normal', CONFIG.HIT_FX_SCALE_BOSS_HIT);
       onDriftDashHit();
+      startSpeedBurst();
     } else {
       if (fish.invincible <= 0) {
         onDamaged(boss.pos);
@@ -4414,6 +4498,10 @@ function createGame() {
       realDt = CONFIG.MAX_FRAME_DT;
     }
     state.realTime += realDt;
+    // 画面全体の風切りは実時間で減らす（ヒットストップ中も流れて見えるように）
+    if (state.speedBurst > 0) {
+      state.speedBurst -= realDt;
+    }
 
     // ヒットストップ中はゲーム内時間だけ遅くする
     let gameDt = realDt;
@@ -6659,6 +6747,7 @@ function createRenderer(game, canvas) {
     beginWorld(mainCtx, scale);
     drawDriftGauge(state);
     beginScreen(mainCtx);
+    drawSpeedBurst(state, w, h);
 
     // ボスを倒した瞬間に画面全体を白く光らせる。画面の座標で描く
     if (state.screenFlash > 0) {
@@ -6783,6 +6872,48 @@ function createRenderer(game, canvas) {
       ctx.fillRect(b.pos.x - r * 0.6, b.pos.y - r * 0.4, r * 1.2, r * 1.4);
       ctx.fillRect(b.pos.x - r * 0.25, b.pos.y - r, r * 0.5, r * 0.7);
     }
+    // ひびの入った壁：岩の色の長方形と、暗いひびの線
+    for (const w of g.walls) {
+      if (!w.alive) {
+        continue;
+      }
+      const hw = CONFIG.BREAK_WALL_SIZE.x / 2;
+      const hh = CONFIG.BREAK_WALL_SIZE.y / 2;
+      ctx.fillStyle = colors.rockLight;
+      ctx.fillRect(w.pos.x - hw, w.pos.y - hh, hw * 2, hh * 2);
+      ctx.strokeStyle = colors.rockDark;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(w.pos.x - hw, w.pos.y - hh, hw * 2, hh * 2);
+      ctx.lineWidth = 5;
+      for (const crack of w.cracks) {
+        ctx.beginPath();
+        ctx.moveTo(crack[0].x, crack[0].y);
+        for (let i = 1; i < crack.length; i++) {
+          ctx.lineTo(crack[i].x, crack[i].y);
+        }
+        ctx.stroke();
+      }
+    }
+    // ビンの爆発：広がって薄くなるオレンジの輪と光、外へ飛ぶ破片
+    for (const boom of g.booms) {
+      const k = clamp(boom.t / CONFIG.BOTTLE_BOOM_TIME, 0, 1);
+      const r = CONFIG.BOTTLE_BOOM_RADIUS * (0.3 + 0.7 * k);
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = colors.vent;
+      ctx.beginPath();
+      ctx.arc(boom.pos.x, boom.pos.y, r * 0.6, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = colors.goal;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.arc(boom.pos.x, boom.pos.y, r, 0, TAU);
+      ctx.stroke();
+      ctx.fillStyle = colors.bottle;
+      for (const sh of boom.shards) {
+        ctx.fillRect(boom.pos.x + Math.cos(sh.dir) * r * 1.1 - 8, boom.pos.y + Math.sin(sh.dir) * r * 1.1 - 8, 16, 16);
+      }
+      ctx.globalAlpha = 1;
+    }
     // ビニール袋：白い半透明の袋と、持ち手
     for (const bag of g.bags) {
       if (!bag.alive) {
@@ -6856,6 +6987,38 @@ function createRenderer(game, canvas) {
       ctx.stroke();
       ctx.restore();
     }
+  }
+
+  // 加速が入った時の、画面全体の風切りの線。画面の座標で、魚の進む向きと逆へ流す。だんだん薄くなる
+  function drawSpeedBurst(state, w, h) {
+    if (state.speedBurst <= 0) {
+      return;
+    }
+    const k = clamp(state.speedBurst / CONFIG.SPEED_BURST_TIME, 0, 1);
+    const elapsed = CONFIG.SPEED_BURST_TIME - state.speedBurst;
+    const dx = -Math.cos(state.fish.moveAngle);
+    const dy = -Math.sin(state.fish.moveAngle);
+    const diag = Math.hypot(w, h);
+    const rnd = makeRng(CONFIG.SEAWEED_SEED);
+    ctx.strokeStyle = colors.speedline;
+    ctx.lineWidth = CONFIG.SPEED_BURST_WIDTH;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = CONFIG.SPEED_BURST_ALPHA * k;
+    const span = diag + CONFIG.SPEED_BURST_LENGTH.y;
+    for (let i = 0; i < CONFIG.SPEED_BURST_LINES; i++) {
+      // 線ごとに、流れと直角の向きのずれ・流れる向きの出だし・長さを決める（毎フレーム同じ値になるよう種を固定）
+      const side = (rnd() - 0.5) * diag;
+      const start = rnd() * span;
+      const len = CONFIG.SPEED_BURST_LENGTH.x + rnd() * (CONFIG.SPEED_BURST_LENGTH.y - CONFIG.SPEED_BURST_LENGTH.x);
+      const along = ((start + elapsed * CONFIG.SPEED_BURST_SPEED) % span) - span / 2;
+      const cx = w / 2 + dx * along - dy * side;
+      const cy = h / 2 + dy * along + dx * side;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx - dx * len, cy - dy * len);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawBagShape(pos, r, t) {
