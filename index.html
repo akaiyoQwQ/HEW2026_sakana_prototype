@@ -411,14 +411,14 @@ function diagonal(startX, startY, count, gapX, gapY) {
 
 const CONFIG = {
   // ===== 魚の速度 =====
-  BASE_SPEED: 150,              // px/秒。何もしなくても自動で前に進む速さ。上げると全体が速くなる
-  INPUT_SPEED_MAX: 540,         // px/秒。進行方向と同じ入力で積める速度の上限。入力ぶんの頭打ち
+  BASE_SPEED: 220,              // px/秒。何もしなくても自動で前に進む速さ。上げると全体が速くなる
+  INPUT_SPEED_MAX: 700,         // px/秒。進行方向と同じ入力で積める速度の上限。入力ぶんの頭打ち
   INPUT_HOLD_TIME: 1.0,         // 秒。向きを合わせた入力が途切れてから、入力ぶんが減り始めるまで
   INPUT_DECAY_TIME: 3.0,        // 秒。減り始めてから入力ぶんが0に戻るまで。減り始めた時の量に関係なくこの時間で戻る
-  INPUT_ACCEL_TIME: 7.5,        // 秒。入力ぶんが0から INPUT_SPEED_MAX に届くまでの時間。1秒あたりの加速量は INPUT_SPEED_MAX ÷ これで計算する
+  INPUT_ACCEL_TIME: 4,          // 秒。入力ぶんが0から INPUT_SPEED_MAX に届くまでの時間。1秒あたりの加速量は INPUT_SPEED_MAX ÷ これで計算する
   INPUT_ALIGN_ANGLE_DEG: 45,    // 度。入力方向と進行方向の差がこれ以内なら「同じ方向」とみなして加速する
-  SPIN_BONUS_PER_HIT: 50,       // px/秒。回転アタックで敵1体に当てるごとに積み上がる速度。上限なし
-  NORMAL_KILL_BONUS: 20,        // px/秒。ふつうの体当たりで1体倒すごとに積む速度（撃破ぶん）。回転アタックより小さくして、回転の方が得なままにする
+  SPIN_BONUS_PER_HIT: 65,       // px/秒。回転アタックで敵1体に当てるごとに積み上がる速度。上限なし
+  NORMAL_KILL_BONUS: 30,        // px/秒。ふつうの体当たりで1体倒すごとに積む速度（撃破ぶん）。回転アタックより小さくして、回転の方が得なままにする
                                 // 撃破ぶんの保つ時間と減る時間は、下の SPIN_BONUS_HOLD_TIME / SPIN_BONUS_DECAY_TIME を共用する。魚の色は変えない
   SPIN_BONUS_HOLD_TIME: 2.0,    // 秒。最後に回転で積んでから、回転ぶんが減り始めるまでの猶予。長いほど次の敵まで速度を持っていける
   SPIN_BONUS_DECAY_TIME: 3.0,   // 秒。減り始めてから回転ぶんが0に戻るまでの時間。積んだ量に関係なくこの時間で戻る。長いほどゆるやか
