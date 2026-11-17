@@ -36,6 +36,9 @@
     --streak-stage3: #ff3355; /* 段階3（上限まで）。赤 */
     --enemy: #e8641f;       /* 道中の敵。コンセプトアートのオレンジの小魚 */
     --boss: #b86bd6;        /* ボス */
+    --shark: #7d8b99;       /* サメの体（仮の灰色） */
+    --shark-belly: #c9d3dc; /* サメのお腹側 */
+    --shark-mouth: #d0263a; /* サメの開いた口の中。溜めと突進の合図 */
     --goal: #ffd166;        /* 雑魚戦の目標物。文字の強調にも使う */
     --boss-marker: #ff2a2a; /* 画面外のボスの方角を示す目印 */
     --splash: #ffd23f;      /* 倒した時のしぶき。黄色 */
@@ -339,8 +342,9 @@
     <div class="title-menu">
       <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全10）</button>
       <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全8）</button>
+      <button class="title-choice" id="choiceBoss" type="button"><span class="key">3</span>　ボスだけ（全4）</button>
     </div>
-    <div class="title-start" id="titleStart">クリックか 1 / 2 キーで選んでスタート</div>
+    <div class="title-start" id="titleStart">クリックか 1 / 2 / 3 キーで選んでスタート</div>
     <h2>操作</h2>
     <ul>
       <li><span class="key">マウスカーソル</span>の方へ、魚はいつも少しずつ向きを変える（<span class="key">矢印キー / WASD</span> を押している間はそちらが優先）</li>
@@ -701,6 +705,22 @@ const CONFIG = {
   BOSS_RETARGET_TIME: 2.0,      // 秒。ボスが泳ぐ先を選び直す間隔
   BOSS_WANDER_MARGIN: 200,
   BOSS_TURN_RATE_DEG: 180,      // 度/秒。ボスが泳ぐ向きに顔（と楕円の当たり判定）を向ける速さ。行き先が変わった時にパッと向きが変わらないようにする
+  // --- サメ（STAGE 4 のボス）。うろうろ → 溜め → 突進 → 休み をくり返す ---
+  SHARK_HP: 6,                  // サメの体力。横か後ろから SHARK_DAMAGE で6回
+  SHARK_DAMAGE: 1,              // 横か後ろから当てた時のダメージ。サメは向きに関係なく、口以外ならいつでも効く
+  SHARK_FRONT_DAMAGE: 1.5,      // 顔に正面から当てた時のダメージ。危ないぶん多めにする
+  SHARK_SPIN_MULT: 2,           // 倍。回転アタック中のダメージ倍率
+  SHARK_RADIUS: 140,            // px。サメの胴体（楕円）の横の半径。当たり判定も同じ楕円
+  SHARK_FRONT_ARC_DEG: 60,      // 度。サメの顔の向きから左右それぞれこの角度以内に魚がいたら「正面」。突進中はここが噛まれる範囲
+  SHARK_PATROL_SPEED: 120,      // px/秒。うろうろしている時の速さ
+  SHARK_PATROL_TIME: 2.0,       // 秒。うろうろしてから溜めに入るまで
+  SHARK_WINDUP_TIME: 0.6,       // 秒。溜め（口を開けて後ろに下がる）の長さ。ここで突進が来ると分かる
+  SHARK_WINDUP_PULLBACK: 80,    // px。溜めの間に後ろへ下がる距離
+  SHARK_DASH_SPEED: 1400,       // px/秒。突進の速さ
+  SHARK_DASH_TIME: 0.7,         // 秒。突進の長さ。壁に着いたらそこで止まる
+  SHARK_RECOVER_TIME: 1.0,      // 秒。突進のあとの休み。ここが殴りどき
+  SHARK_KNOCKBACK: 600,         // px/秒。顔に正面から当てた時に魚が跳ね返される勢い（クラゲと同じく、だんだん弱まる）
+  SHARK_TURN_RATE_DEG: 180,     // 度/秒。うろうろと溜めの間に魚の方へ顔を向ける速さ
   BOSS_LOW_HP_RATIO: 0.25,      // 最大体力のこの割合を切ったら、ボスを赤く点滅させる
   BOSS_LOW_HP_BLINK_FREQ: 6,    // 回/秒。点滅の速さ
 
@@ -1397,6 +1417,7 @@ function mapStage(def, opts) {
     enemies: def.enemies.map(function (p) { return mapPoint(def, p); }),
     breakables: [],
     botPath: null,
+    bossKind: opts.bossKind || 'placeholder', // ボスの種類。'shark' はサメ、'placeholder' はまだ作っていない仮のボス
   };
   let seed = 0;
   for (const p of def.rocks) {
@@ -1438,7 +1459,7 @@ const STAGES_NORMAL = [
   mapStage(MAP_1, { label: 'STAGE 1  Move', type: 'zako', timeLimit: 6, /* 秒。敵も石もないので、ボットのクリアタイム（4.0秒）の約1.5倍のふつうの制限時間 */ botPath: BOT_1 }),
   mapStage(MAP_2, { label: 'STAGE 2  Kill', type: 'zako', timeLimit: 6, /* 秒。1体も倒さずに泳いだボットのタイム（7.5秒）の約3/4。倒して戻すぶんがないと間に合わない */ botPath: BOT_2 }),
   mapStage(MAP_3, { label: 'STAGE 3  Block', type: 'zako', timeLimit: 7.5, /* 秒。何も倒さず壊さずに泳いだボットのタイム（10.0秒）の約3/4 */ botPath: BOT_3 }),
-  mapStage(MAP_4, { label: 'STAGE 4  Boss 1', type: 'boss', timeLimit: null }),
+  mapStage(MAP_4, { label: 'STAGE 4  Boss 1', type: 'boss', timeLimit: null, bossKind: 'shark' }),
   mapStage(MAP_5, { label: 'STAGE 5  Block', type: 'zako', timeLimit: 11, /* 秒。何も倒さず壊さずに泳いだボットのタイム（14.7秒）の約3/4 */ botPath: BOT_5 }),
   mapStage(MAP_6, { label: 'STAGE 6  Boss 2', type: 'boss', timeLimit: null }),
   mapStage(MAP_7, { label: 'STAGE 7', type: 'zako', timeLimit: 8, /* 秒。全部倒したボットのタイム（10.5秒）の約3/4。何もしないと石で止まって進めない */ botPath: BOT_7 }),
@@ -1555,10 +1576,21 @@ const STAGE_G8 = courseStage({
 
 const STAGES_GIMMICK = [STAGE_G1, STAGE_G2, STAGE_G3, STAGE_G4, STAGE_G5, STAGE_G6, STAGE_G7, STAGE_G8];
 
-// メニューで選べるステージの組。'normal' はいつものステージ（地図の10ステージ）、'gimmick' は新ギミックの8ステージ
-const STAGE_SETS = { normal: STAGES_NORMAL, gimmick: STAGES_GIMMICK };
+// メニューで選べるステージの組。'normal' はいつものステージ（地図の10ステージ）、'gimmick' は新ギミックの8ステージ、'boss' はボス戦だけの4ステージ
+// ボスだけを続けて確かめる組。いつものステージのボス戦（4つ）をそのまま使う（同じステージなので、片方を直せば両方に入る）
+const STAGES_BOSS = STAGES_NORMAL.filter(function (stage) { return stage.type === 'boss'; });
+
+const STAGE_SETS = { normal: STAGES_NORMAL, gimmick: STAGES_GIMMICK, boss: STAGES_BOSS };
 // 全部のステージを1列に並べたもの。海藻の並びの種など、ステージごとに違う番号がほしい所で使う
 const ALL_STAGES = STAGES_NORMAL.concat(STAGES_GIMMICK);
+
+// ボスの胴体の横の半径。種類で違う大きさにできるよう、ここ1か所で決める（ゲームと描画の両方で使うので外に置く）
+function bossRadius(boss) {
+  if (boss.kind === 'shark') {
+    return CONFIG.SHARK_RADIUS;
+  }
+  return CONFIG.BOSS_RADIUS;
+}
 
 // ステージの左端。カウントダウン中も画面の中を泳げるよう、GO! の位置より左に助走の区間を取る。
 // 数値で持たずに計算するので、開始位置やカウントダウンの長さを変えても自動でついてくる
@@ -1772,10 +1804,22 @@ function createGame() {
     if (stage.type === 'boss') {
       bossPos = vec2(stage.roomCenter.x, stage.roomCenter.y);
     }
+    // 体力の最大はボスの種類で変わる。HUD と赤い点滅はこの maxHp を見る
+    let bossMaxHp = CONFIG.BOSS_HP;
+    if (stage.bossKind === 'shark') {
+      bossMaxHp = CONFIG.SHARK_HP;
+    }
     state.boss = {
+      kind: stage.bossKind,
+      maxHp: bossMaxHp,
+      phase: 'patrol',         // サメの行動。'patrol' うろうろ / 'windup' 溜め / 'dash' 突進 / 'recover' 休み
+      phaseTimer: CONFIG.SHARK_PATROL_TIME, // 秒。今の行動の残り時間
+      dashDir: 0,              // 突進の向き（ラジアン）。溜め終わりの瞬間の魚の方で決める
+      bitThisDash: false,      // この突進でもう噛んだか。1回の突進で噛むのは1度だけ
+      mouth: 0,                // 口の開き具合 0〜1。描画用
       pos: bossPos,
       target: vec2(bossPos.x, bossPos.y),
-      hp: CONFIG.BOSS_HP,
+      hp: bossMaxHp,
       alive: stage.type === 'boss',
       retargetTimer: 0,
       flash: 0,
@@ -1810,7 +1854,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -3575,7 +3619,7 @@ function createGame() {
       if (dist(p, state.fish.pos) < CONFIG.ROOM_SPAWN_MIN_DIST_FISH) {
         continue;
       }
-      if (dist(p, state.boss.pos) < CONFIG.BOSS_RADIUS + CONFIG.ROOM_SPAWN_MIN_DIST_BOSS) {
+      if (dist(p, state.boss.pos) < bossRadius(state.boss) + CONFIG.ROOM_SPAWN_MIN_DIST_BOSS) {
         continue;
       }
       // 柱に埋まったり、柱にくっついたりしないように、体2つぶんは離す
@@ -3815,6 +3859,70 @@ function createGame() {
     }
   }
 
+  // 魚がサメの顔の側にいるか。サメの向きと、サメから魚への向きの差で判定する
+  function inSharkFront(boss) {
+    const fish = state.fish;
+    const toFish = Math.atan2(fish.pos.y - boss.pos.y, fish.pos.x - boss.pos.x);
+    return Math.abs(angleDiff(toFish, boss.facing)) <= CONFIG.SHARK_FRONT_ARC_DEG * DEG;
+  }
+
+  // サメに当たった時。突進中に顔へ触れたら噛まれる（減速）。それ以外はどこに当たってもダメージが入る
+  function collideShark() {
+    const fish = state.fish;
+    const boss = state.boss;
+    const r = CONFIG.SHARK_RADIUS;
+    const bodyHit = hitsBody(boss.pos, boss.facing, r);
+    const billHit = billTouchesBody(boss.pos, boss.facing, r);
+    if (!bodyHit && !billHit) {
+      return;
+    }
+    // 体が大きいので毎フレーム当たってしまう。どの結果でも一度は離れてもらう
+    fish.bossHitCooldown = CONFIG.BOSS_HIT_COOLDOWN;
+    const front = inSharkFront(boss);
+
+    // 突進中の顔は噛む側。サメにはダメージが入らない。噛むのは1回の突進で1度だけ
+    if (boss.phase === 'dash' && front) {
+      if (!boss.bitThisDash) {
+        boss.bitThisDash = true;
+        slowFish();
+        state.stats.sharkBites++;
+      }
+      return;
+    }
+
+    let toward = fish.pos;
+    if (billHit && !bodyHit) {
+      const pts = billPoints();
+      toward = pts[pts.length - 1];
+    }
+    const contact = bodyEdgePoint(boss.pos, boss.facing, r, toward);
+
+    let damage = CONFIG.SHARK_DAMAGE;
+    if (front) {
+      damage = CONFIG.SHARK_FRONT_DAMAGE;
+    }
+    let kind = 'normal';
+    if (isSpinning()) {
+      damage = damage * CONFIG.SHARK_SPIN_MULT;
+      kind = 'spin';
+    }
+    boss.hp -= damage;
+    boss.flash = CONFIG.FLASH_DURATION;
+    triggerHitstop(kind);
+    spawnHitFx(contact, kind, CONFIG.HIT_FX_SCALE_BOSS_HIT);
+    onDriftDashHit();
+    startSpeedBurst();
+    // 顔に正面から当てたら、魚は少し跳ね返される。サメから魚への向きへ押す
+    if (front) {
+      const away = Math.atan2(fish.pos.y - boss.pos.y, fish.pos.x - boss.pos.x);
+      fish.knock = vec2(Math.cos(away) * CONFIG.SHARK_KNOCKBACK, Math.sin(away) * CONFIG.SHARK_KNOCKBACK);
+    }
+    if (boss.hp <= 0) {
+      boss.hp = 0;
+      boss.alive = false;
+    }
+  }
+
   function collideBoss() {
     const fish = state.fish;
     const boss = state.boss;
@@ -3822,6 +3930,10 @@ function createGame() {
       return;
     }
     if (fish.bossHitCooldown > 0) {
+      return;
+    }
+    if (boss.kind === 'shark') {
+      collideShark();
       return;
     }
     const bodyHit = hitsBody(boss.pos, boss.facing, CONFIG.BOSS_RADIUS);
@@ -3982,28 +4094,138 @@ function createGame() {
     }
   }
 
+  // 部屋の中で、壁から BOSS_WANDER_MARGIN 内側の円に収める。はみ出していたら true
+  function keepBossInRoom(boss) {
+    const stage = currentStage();
+    const limit = stage.roomRadius - CONFIG.BOSS_WANDER_MARGIN;
+    const dx = boss.pos.x - stage.roomCenter.x;
+    const dy = boss.pos.y - stage.roomCenter.y;
+    const d = Math.hypot(dx, dy);
+    if (d <= limit) {
+      return false;
+    }
+    boss.pos.x = stage.roomCenter.x + dx / d * limit;
+    boss.pos.y = stage.roomCenter.y + dy / d * limit;
+    return true;
+  }
+
+  // 柱から押し出す。食い込んでいたら true
+  function pushBossOutOfRocks(boss) {
+    let hit = false;
+    for (const rock of currentStage().rocks) {
+      if (pushOutOfRock(boss.pos, rock, bossRadius(boss))) {
+        hit = true;
+      }
+    }
+    return hit;
+  }
+
+  // 顔を ang の方へ、1秒に rateDeg 度ずつ向ける
+  function turnBossToward(boss, ang, rateDeg, dt) {
+    const maxTurn = rateDeg * DEG * dt;
+    boss.facing += clamp(angleDiff(ang, boss.facing), -maxTurn, maxTurn);
+  }
+
+  // サメの行動。うろうろ（魚の方を向く）→ 溜め（口を開けて下がる）→ 突進（溜め終わりの魚の位置へ）→ 休み、をくり返す
+  function updateShark(dt) {
+    const boss = state.boss;
+    const fish = state.fish;
+    const toFish = Math.atan2(fish.pos.y - boss.pos.y, fish.pos.x - boss.pos.x);
+    boss.phaseTimer -= dt;
+
+    if (boss.phase === 'patrol') {
+      // 行き先は今までのボスと同じ選び方。顔だけはいつも魚に向ける
+      boss.retargetTimer -= dt;
+      const reached = dist(boss.pos, boss.target) < CONFIG.SHARK_PATROL_SPEED * dt;
+      if (boss.retargetTimer <= 0 || reached) {
+        pickBossTarget(boss);
+      }
+      const ang = Math.atan2(boss.target.y - boss.pos.y, boss.target.x - boss.pos.x);
+      boss.pos.x += Math.cos(ang) * CONFIG.SHARK_PATROL_SPEED * dt;
+      boss.pos.y += Math.sin(ang) * CONFIG.SHARK_PATROL_SPEED * dt;
+      turnBossToward(boss, toFish, CONFIG.SHARK_TURN_RATE_DEG, dt);
+      boss.mouth = Math.max(0, boss.mouth - dt / CONFIG.SHARK_WINDUP_TIME);
+      if (boss.phaseTimer <= 0) {
+        boss.phase = 'windup';
+        boss.phaseTimer = CONFIG.SHARK_WINDUP_TIME;
+      }
+    } else if (boss.phase === 'windup') {
+      // 魚の方を向きながら、口を開けて後ろへ下がる。これが突進の合図
+      turnBossToward(boss, toFish, CONFIG.SHARK_TURN_RATE_DEG, dt);
+      const back = CONFIG.SHARK_WINDUP_PULLBACK / CONFIG.SHARK_WINDUP_TIME;
+      boss.pos.x -= Math.cos(boss.facing) * back * dt;
+      boss.pos.y -= Math.sin(boss.facing) * back * dt;
+      boss.mouth = Math.min(1, boss.mouth + dt / CONFIG.SHARK_WINDUP_TIME);
+      if (boss.phaseTimer <= 0) {
+        // 向きはこの瞬間の魚の方で決めて、突進中は曲がらない。避ければ空振りする
+        boss.phase = 'dash';
+        boss.phaseTimer = CONFIG.SHARK_DASH_TIME;
+        boss.dashDir = toFish;
+        boss.facing = toFish;
+        boss.bitThisDash = false;
+        state.stats.sharkDashes++;
+      }
+    } else if (boss.phase === 'dash') {
+      boss.pos.x += Math.cos(boss.dashDir) * CONFIG.SHARK_DASH_SPEED * dt;
+      boss.pos.y += Math.sin(boss.dashDir) * CONFIG.SHARK_DASH_SPEED * dt;
+      boss.mouth = 1;
+      // 壁や柱に着いたら、そこで突進をやめて休みに入る
+      let stop = boss.phaseTimer <= 0;
+      if (keepBossInRoom(boss)) {
+        stop = true;
+      }
+      if (pushBossOutOfRocks(boss)) {
+        stop = true;
+      }
+      if (stop) {
+        boss.phase = 'recover';
+        boss.phaseTimer = CONFIG.SHARK_RECOVER_TIME;
+      }
+    } else {
+      // 休み。止まって口を閉じる。ここが殴りどき
+      boss.mouth = Math.max(0, boss.mouth - dt / CONFIG.SHARK_WINDUP_TIME);
+      if (boss.phaseTimer <= 0) {
+        boss.phase = 'patrol';
+        boss.phaseTimer = CONFIG.SHARK_PATROL_TIME;
+        boss.retargetTimer = 0;
+      }
+    }
+    keepBossInRoom(boss);
+    if (pushBossOutOfRocks(boss)) {
+      boss.retargetTimer = 0;
+    }
+  }
+
+  // 部屋の円の中（壁から BOSS_WANDER_MARGIN 内側）から次の行き先を選ぶ。
+  // 円は凸なので、中から中へまっすぐ泳げば外には出ない
+  // 柱の近くは選ばない。見つからなければ今の場所にとどまる
+  function pickBossTarget(boss) {
+    const stage = currentStage();
+    for (let i = 0; i < CONFIG.ROOM_SPAWN_TRIES; i++) {
+      const ang = Math.random() * TAU;
+      const rad = Math.sqrt(Math.random()) * (stage.roomRadius - CONFIG.BOSS_WANDER_MARGIN);
+      const p = vec2(stage.roomCenter.x + Math.cos(ang) * rad, stage.roomCenter.y + Math.sin(ang) * rad);
+      if (!nearRock(p, bossRadius(boss))) {
+        boss.target = p;
+        break;
+      }
+    }
+    boss.retargetTimer = CONFIG.BOSS_RETARGET_TIME;
+  }
+
   function updateBoss(dt) {
     const boss = state.boss;
     if (!boss.alive) {
       return;
     }
+    if (boss.kind === 'shark') {
+      updateShark(dt);
+      return;
+    }
     boss.retargetTimer -= dt;
     const reached = dist(boss.pos, boss.target) < CONFIG.BOSS_SPEED * dt;
     if (boss.retargetTimer <= 0 || reached) {
-      // 部屋の円の中（壁から BOSS_WANDER_MARGIN 内側）から次の行き先を選ぶ。
-      // 円は凸なので、中から中へまっすぐ泳げば外には出ない
-      // 柱の近くは選ばない。見つからなければ今の場所にとどまる
-      const stage = currentStage();
-      for (let i = 0; i < CONFIG.ROOM_SPAWN_TRIES; i++) {
-        const ang = Math.random() * TAU;
-        const rad = Math.sqrt(Math.random()) * (stage.roomRadius - CONFIG.BOSS_WANDER_MARGIN);
-        const p = vec2(stage.roomCenter.x + Math.cos(ang) * rad, stage.roomCenter.y + Math.sin(ang) * rad);
-        if (!nearRock(p, CONFIG.BOSS_RADIUS)) {
-          boss.target = p;
-          break;
-        }
-      }
-      boss.retargetTimer = CONFIG.BOSS_RETARGET_TIME;
+      pickBossTarget(boss);
     }
     const ang = Math.atan2(boss.target.y - boss.pos.y, boss.target.x - boss.pos.x);
     boss.pos.x += Math.cos(ang) * CONFIG.BOSS_SPEED * dt;
@@ -4086,7 +4308,7 @@ function createGame() {
       const speed = CONFIG.BOSS_DEATH_DEBRIS_SPEED * (0.5 + Math.random() * 0.7);
       addParticle({
         type: 'debris',
-        pos: vec2(boss.pos.x + Math.cos(ang) * CONFIG.BOSS_RADIUS * 0.4, boss.pos.y + Math.sin(ang) * CONFIG.BOSS_RADIUS * 0.4),
+        pos: vec2(boss.pos.x + Math.cos(ang) * bossRadius(boss) * 0.4, boss.pos.y + Math.sin(ang) * bossRadius(boss) * 0.4),
         vel: vec2(Math.cos(ang) * speed, Math.sin(ang) * speed),
         life: CONFIG.BOSS_DEATH_DEBRIS_LIFETIME * (0.7 + Math.random() * 0.5),
         size: CONFIG.BOSS_DEATH_DEBRIS_SIZE * (0.6 + Math.random() * 0.8),
@@ -4817,6 +5039,9 @@ function createRenderer(game, canvas) {
     streakStages: [token('--streak-stage1'), token('--streak-stage2'), token('--streak-stage3')],
     enemy: token('--enemy'),
     boss: token('--boss'),
+    shark: token('--shark'),
+    sharkBelly: token('--shark-belly'),
+    sharkMouth: token('--shark-mouth'),
     goal: token('--goal'),
     bossMarker: token('--boss-marker'),
     splash: token('--splash'),
@@ -6379,7 +6604,7 @@ function createRenderer(game, canvas) {
     // ボスの位置を画面の座標に直す
     const bx = (boss.pos.x - camX) * scale;
     const by = (boss.pos.y - camY) * scale;
-    const br = CONFIG.BOSS_RADIUS * scale;
+    const br = bossRadius(boss) * scale;
     // 体が少しでも画面に入っていれば出さない
     if (bx + br > 0 && bx - br < w && by + br > 0 && by - br < h) {
       return;
@@ -6415,25 +6640,99 @@ function createRenderer(game, canvas) {
     ctx.globalAlpha = 1;
   }
 
-  // time は点滅に使う実時間
-  function drawBoss(boss, time) {
-    if (!boss.alive) {
-      return;
-    }
-    const r = CONFIG.BOSS_RADIUS;
-    const h = r * CONFIG.ENEMY_BODY_HEIGHT_RATIO;
-    let color = colors.boss;
-    // 体力が少なくなったら、いつもの色と赤を交互に塗って点滅させる
-    if (boss.hp < CONFIG.BOSS_HP * CONFIG.BOSS_LOW_HP_RATIO) {
+  // ボスの体の色。体力が少ないと赤と交互に点滅し、当てた直後は白く光る（白は点滅より優先。真っ白にはせず元の色を少し残す）
+  function bossBodyColor(boss, base, time) {
+    let color = base;
+    if (boss.hp < boss.maxHp * CONFIG.BOSS_LOW_HP_RATIO) {
       const phase = Math.floor(time * CONFIG.BOSS_LOW_HP_BLINK_FREQ * 2);
       if (phase % 2 === 0) {
         color = colors.bossMarker;
       }
     }
-    // 当てた時の白い光は、点滅より優先する（真っ白にはせず、元の色を少し残す）
     if (boss.flash > 0) {
       color = mixColor(color, colors.flash, CONFIG.HIT_FLASH_STRENGTH);
     }
+    return color;
+  }
+
+  // サメ（仮の絵）。灰色の胴体・背びれ・尾びれ。溜めと突進の間は顔の先の口が赤く開く
+  function drawShark(boss, time) {
+    const r = bossRadius(boss);
+    const h = r * CONFIG.ENEMY_BODY_HEIGHT_RATIO;
+    const color = bossBodyColor(boss, colors.shark, time);
+    ctx.save();
+    ctx.translate(boss.pos.x, boss.pos.y);
+    ctx.rotate(boss.facing);
+    // 左を向いている時は上下を反転する。横から見た絵なので、そのまま回すと背びれが下、お腹が上になってしまう
+    if (Math.cos(boss.facing) < 0) {
+      ctx.scale(1, -1);
+    }
+    ctx.fillStyle = color;
+    // 尾びれ。上が長い三日月形にして、サメらしく見せる
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.9, 0);
+    ctx.lineTo(-r * 1.7, -r * 0.8);
+    ctx.lineTo(-r * 1.45, 0);
+    ctx.lineTo(-r * 1.6, r * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    // 背びれ。上から見た絵なので、体の真ん中から少し後ろに三角を立てる
+    ctx.beginPath();
+    ctx.moveTo(r * 0.15, -h * 0.6);
+    ctx.lineTo(-r * 0.45, -h * 1.7);
+    ctx.lineTo(-r * 0.35, -h * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    // 胴体。当たり判定と同じ楕円
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, h, 0, 0, TAU);
+    ctx.fill();
+    // お腹側（下半分）を明るくする
+    ctx.fillStyle = mixColor(colors.sharkBelly, color, 0.3);
+    ctx.beginPath();
+    ctx.ellipse(0, h * 0.35, r * 0.8, h * 0.45, 0, 0, TAU);
+    ctx.fill();
+    // 口。開き具合 mouth に合わせて、顔の先から赤いくさびが開く
+    if (boss.mouth > 0) {
+      const open = boss.mouth * h * 0.7;
+      ctx.fillStyle = colors.sharkMouth;
+      ctx.beginPath();
+      ctx.moveTo(r * 1.02, -open);
+      ctx.lineTo(r * 0.45, 0);
+      ctx.lineTo(r * 1.02, open);
+      ctx.closePath();
+      ctx.fill();
+      // 歯。口の縁に白い点を並べる
+      ctx.fillStyle = colors.flash;
+      for (let i = 1; i <= 3; i++) {
+        const k = i / 4;
+        const x = r * 0.45 + (r * 1.02 - r * 0.45) * k;
+        ctx.beginPath();
+        ctx.arc(x, -open * k, r * 0.03, 0, TAU);
+        ctx.arc(x, open * k, r * 0.03, 0, TAU);
+        ctx.fill();
+      }
+    }
+    // 目
+    ctx.fillStyle = colors.waterBottom;
+    ctx.beginPath();
+    ctx.arc(r * 0.5, -h * 0.4, r * 0.08, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // time は点滅に使う実時間
+  function drawBoss(boss, time) {
+    if (!boss.alive) {
+      return;
+    }
+    if (boss.kind === 'shark') {
+      drawShark(boss, time);
+      return;
+    }
+    const r = bossRadius(boss);
+    const h = r * CONFIG.ENEMY_BODY_HEIGHT_RATIO;
+    const color = bossBodyColor(boss, colors.boss, time);
     ctx.save();
     ctx.translate(boss.pos.x, boss.pos.y);
     ctx.rotate(boss.facing);
@@ -7178,6 +7477,10 @@ function start() {
     e.preventDefault();
     closeTitle('gimmick');
   });
+  document.getElementById('choiceBoss').addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    closeTitle('boss');
+  });
 
   window.addEventListener('keydown', function (e) {
     if (e.repeat) {
@@ -7188,13 +7491,16 @@ function start() {
       if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key)) {
         return;
       }
-      // 説明画面（メニュー）では 1 / 2 で選ぶ。ほかのキーは何もしない（R などとしても扱わない）
+      // 説明画面（メニュー）では 1 / 2 / 3 で選ぶ。ほかのキーは何もしない（R などとしても扱わない）
       e.preventDefault();
       if (e.code === 'Digit1' || e.code === 'Numpad1') {
         closeTitle('normal');
       }
       if (e.code === 'Digit2' || e.code === 'Numpad2') {
         closeTitle('gimmick');
+      }
+      if (e.code === 'Digit3' || e.code === 'Numpad3') {
+        closeTitle('boss');
       }
       return;
     }
@@ -7304,7 +7610,7 @@ function start() {
     hudBossLabel.hidden = !isBoss;
     hudBoss.hidden = !isBoss;
     if (s.boss.alive) {
-      hudBoss.textContent = s.boss.hp.toFixed(1) + ' / ' + CONFIG.BOSS_HP;
+      hudBoss.textContent = s.boss.hp.toFixed(1) + ' / ' + s.boss.maxHp;
     } else {
       hudBoss.textContent = 'DOWN';
     }
