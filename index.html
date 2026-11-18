@@ -707,14 +707,15 @@ const CONFIG = {
   BOSS_WANDER_MARGIN: 200,
   BOSS_TURN_RATE_DEG: 180,      // 度/秒。ボスが泳ぐ向きに顔（と楕円の当たり判定）を向ける速さ。行き先が変わった時にパッと向きが変わらないようにする
   // --- サメ（STAGE 4 のボス）。うろうろ → 溜め → 突進 → 休み をくり返す ---
-  SHARK_HP: 6,                  // サメの体力。横か後ろから SHARK_DAMAGE で6回
+  SHARK_HP: 40,                 // サメの体力。横か後ろから SHARK_DAMAGE で40回、回転なら20回
   SHARK_DAMAGE: 1,              // 横か後ろから当てた時のダメージ。サメは向きに関係なく、口以外ならいつでも効く
   SHARK_FRONT_DAMAGE: 1.5,      // 顔に正面から当てた時のダメージ。危ないぶん多めにする
   SHARK_SPIN_MULT: 2,           // 倍。回転アタック中のダメージ倍率
   // サメの大きさは数値で持たず、カジキの絵の長さ（PLAYER_SPRITE_LENGTH）の BOSS_SIZE_TO_PLAYER 倍の全長から計算する。
   // カジキの絵を変えてもサメが自動でついてくるようにするため。計算は sharkRadius()
-  BOSS_SIZE_TO_PLAYER: 5,       // 倍。ボスの全長（尾の先から鼻先まで）が、カジキの全長の何倍か。今はサメだけに使う
+  BOSS_SIZE_TO_PLAYER: 4,       // 倍。ボスの全長（尾の先から鼻先まで）が、カジキの全長の何倍か。今はサメだけに使う
   SHARK_TAIL_LENGTH_RATIO: 1.7, // 胴の横の半径に対する、中心から尾びれの先までの長さ。全長＝半径×(1＋これ)
+  SHARK_START_DEPTH: 0.5,       // サメの最初の位置。入口から部屋の中心へ向かう線の先（部屋の奥）のどこに置くか。0 で部屋の中心、1 で体が壁に当たらずに行ける一番奥
   BOSS_WALL_GAP: 60,            // px。サメが泳ぐ時に、部屋の壁と体の間に空ける余白。体が大きいので、半径ぶん＋これだけ内側を泳ぐ
   SHARK_FRONT_ARC_DEG: 60,      // 度。サメの顔の向きから左右それぞれこの角度以内に魚がいたら「正面」。突進中はここが噛まれる範囲
   SHARK_PATROL_SPEED: 120,      // px/秒。うろうろしている時の速さ
@@ -1820,8 +1821,18 @@ function createGame() {
 
     // ボスはボス戦だけ。部屋の中心から出る。雑魚戦では倒された扱いにして、当たりも描画もしない
     let bossPos = vec2(0, 0);
+    let bossFacing = Math.PI; // 顔と楕円の向き。最初は通路から入ってくる魚の方（左）を向く
     if (stage.type === 'boss') {
       bossPos = vec2(stage.roomCenter.x, stage.roomCenter.y);
+      if (stage.bossKind === 'shark') {
+        // サメは部屋の奥で待つ。入口の真ん中から部屋の中心へ向かう向きに、中心から SHARK_START_DEPTH の割合だけ進めた所に置き、顔は入口へ向ける
+        const gateMid = vec2((stage.gate[0].x + stage.gate[1].x) / 2, (stage.gate[0].y + stage.gate[1].y) / 2);
+        const inward = Math.atan2(stage.roomCenter.y - gateMid.y, stage.roomCenter.x - gateMid.x);
+        const reach = stage.roomRadius - bossRoomMargin({ kind: 'shark' });
+        const depth = reach * CONFIG.SHARK_START_DEPTH;
+        bossPos = vec2(stage.roomCenter.x + Math.cos(inward) * depth, stage.roomCenter.y + Math.sin(inward) * depth);
+        bossFacing = inward + Math.PI;
+      }
     }
     // 体力の最大はボスの種類で変わる。HUD と赤い点滅はこの maxHp を見る
     let bossMaxHp = CONFIG.BOSS_HP;
@@ -1842,7 +1853,7 @@ function createGame() {
       alive: stage.type === 'boss',
       retargetTimer: 0,
       flash: 0,
-      facing: Math.PI,         // 顔と楕円の向き。最初は通路から入ってくる魚の方（左）を向く
+      facing: bossFacing,
     };
 
     state.heldDirs = {};       // 今押されている方向
