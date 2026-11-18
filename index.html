@@ -673,6 +673,7 @@ const CONFIG = {
 
   // ===== 敵との当たり =====
   FRONT_ANGLE_DEG: 90,         // 度。進行方向からこの角度以内に敵の中心があれば「正面から」として倒せる。狭めるとかすった時に被弾しやすくなる
+  KILL_INVINCIBLE_TIME: 0.6,    // 秒。敵を倒した瞬間（角は刺さった瞬間）から被弾しない時間。列に突っ込んだ時に、隣の敵に横から当たって止められないようにする
   DAMAGE_INVINCIBLE_TIME: 0.6,  // 秒。被弾してからもう一度被弾しない時間。敵をすり抜けるのに必要
 
   // ===== ヒットストップ =====
@@ -710,7 +711,11 @@ const CONFIG = {
   SHARK_DAMAGE: 1,              // 横か後ろから当てた時のダメージ。サメは向きに関係なく、口以外ならいつでも効く
   SHARK_FRONT_DAMAGE: 1.5,      // 顔に正面から当てた時のダメージ。危ないぶん多めにする
   SHARK_SPIN_MULT: 2,           // 倍。回転アタック中のダメージ倍率
-  SHARK_RADIUS: 140,            // px。サメの胴体（楕円）の横の半径。当たり判定も同じ楕円
+  // サメの大きさは数値で持たず、カジキの絵の長さ（PLAYER_SPRITE_LENGTH）の BOSS_SIZE_TO_PLAYER 倍の全長から計算する。
+  // カジキの絵を変えてもサメが自動でついてくるようにするため。計算は sharkRadius()
+  BOSS_SIZE_TO_PLAYER: 5,       // 倍。ボスの全長（尾の先から鼻先まで）が、カジキの全長の何倍か。今はサメだけに使う
+  SHARK_TAIL_LENGTH_RATIO: 1.7, // 胴の横の半径に対する、中心から尾びれの先までの長さ。全長＝半径×(1＋これ)
+  BOSS_WALL_GAP: 60,            // px。サメが泳ぐ時に、部屋の壁と体の間に空ける余白。体が大きいので、半径ぶん＋これだけ内側を泳ぐ
   SHARK_FRONT_ARC_DEG: 60,      // 度。サメの顔の向きから左右それぞれこの角度以内に魚がいたら「正面」。突進中はここが噛まれる範囲
   SHARK_PATROL_SPEED: 120,      // px/秒。うろうろしている時の速さ
   SHARK_PATROL_TIME: 2.0,       // 秒。うろうろしてから溜めに入るまで
@@ -1587,9 +1592,23 @@ const ALL_STAGES = STAGES_NORMAL.concat(STAGES_GIMMICK);
 // ボスの胴体の横の半径。種類で違う大きさにできるよう、ここ1か所で決める（ゲームと描画の両方で使うので外に置く）
 function bossRadius(boss) {
   if (boss.kind === 'shark') {
-    return CONFIG.SHARK_RADIUS;
+    return sharkRadius();
   }
   return CONFIG.BOSS_RADIUS;
+}
+
+// サメの胴の横の半径。全長（カジキの全長の BOSS_SIZE_TO_PLAYER 倍）を、半径に対する全長の比で割って出す
+function sharkRadius() {
+  const length = CONFIG.PLAYER_SPRITE_LENGTH * CONFIG.BOSS_SIZE_TO_PLAYER;
+  return length / (1 + CONFIG.SHARK_TAIL_LENGTH_RATIO);
+}
+
+// 部屋の壁からどれだけ内側をボスが泳ぐか。サメは大きいので体の半径ぶん＋余白、仮のボスは今までどおり
+function bossRoomMargin(boss) {
+  if (boss.kind === 'shark') {
+    return bossRadius(boss) + CONFIG.BOSS_WALL_GAP;
+  }
+  return CONFIG.BOSS_WANDER_MARGIN;
 }
 
 // ステージの左端。カウントダウン中も画面の中を泳げるよう、GO! の位置より左に助走の区間を取る。
@@ -1854,7 +1873,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -3719,9 +3738,17 @@ function createGame() {
 
   // 雑魚を倒す。kind は 'spin'（回転で倒した）か 'normal'（体当たり・角で倒した）。
   // 刺さってから弾ける時も、すぐ弾ける時も、ここでまとめて速さ・ヒットストップ・エフェクトを入れる
+  // 敵を倒した（角は刺さった）時の無敵。もう残っている方が長ければそちらを残す（被弾直後の無敵を縮めないため）
+  function grantKillInvincible() {
+    const fish = state.fish;
+    fish.invincible = Math.max(fish.invincible, CONFIG.KILL_INVINCIBLE_TIME);
+    state.stats.killInvincibles++;
+  }
+
   function killEnemy(enemy, kind) {
     enemy.alive = false;
     enemy.impale = null;
+    grantKillInvincible();
     enemy.flash = CONFIG.FLASH_DURATION;
     if (kind === 'spin') {
       addBonus('spinBonus', CONFIG.SPIN_BONUS_PER_HIT);
@@ -3836,6 +3863,8 @@ function createGame() {
         // ドリフトのクールタイムを戻す判定は、弾ける時ではなく今（刺さった時）に数える（受付時間ぎりぎりで取りこぼさないため）
         enemy.impale = { timer: CONFIG.IMPALE_DELAY, spin: isSpinning() };
         state.stats.impales++;
+        // 無敵は弾ける時ではなく刺さった今から。刺さっている間に隣の敵へ横から当たっても止められないように
+        grantKillInvincible();
         onDriftDashHit();
         continue;
       }
@@ -3870,7 +3899,7 @@ function createGame() {
   function collideShark() {
     const fish = state.fish;
     const boss = state.boss;
-    const r = CONFIG.SHARK_RADIUS;
+    const r = bossRadius(boss);
     const bodyHit = hitsBody(boss.pos, boss.facing, r);
     const billHit = billTouchesBody(boss.pos, boss.facing, r);
     if (!bodyHit && !billHit) {
@@ -4094,10 +4123,10 @@ function createGame() {
     }
   }
 
-  // 部屋の中で、壁から BOSS_WANDER_MARGIN 内側の円に収める。はみ出していたら true
+  // 部屋の中で、壁から bossRoomMargin() 内側の円に収める。はみ出していたら true
   function keepBossInRoom(boss) {
     const stage = currentStage();
-    const limit = stage.roomRadius - CONFIG.BOSS_WANDER_MARGIN;
+    const limit = stage.roomRadius - bossRoomMargin(boss);
     const dx = boss.pos.x - stage.roomCenter.x;
     const dy = boss.pos.y - stage.roomCenter.y;
     const d = Math.hypot(dx, dy);
@@ -4196,14 +4225,14 @@ function createGame() {
     }
   }
 
-  // 部屋の円の中（壁から BOSS_WANDER_MARGIN 内側）から次の行き先を選ぶ。
+  // 部屋の円の中（壁から bossRoomMargin() 内側）から次の行き先を選ぶ。
   // 円は凸なので、中から中へまっすぐ泳げば外には出ない
   // 柱の近くは選ばない。見つからなければ今の場所にとどまる
   function pickBossTarget(boss) {
     const stage = currentStage();
     for (let i = 0; i < CONFIG.ROOM_SPAWN_TRIES; i++) {
       const ang = Math.random() * TAU;
-      const rad = Math.sqrt(Math.random()) * (stage.roomRadius - CONFIG.BOSS_WANDER_MARGIN);
+      const rad = Math.sqrt(Math.random()) * (stage.roomRadius - bossRoomMargin(boss));
       const p = vec2(stage.roomCenter.x + Math.cos(ang) * rad, stage.roomCenter.y + Math.sin(ang) * rad);
       if (!nearRock(p, bossRadius(boss))) {
         boss.target = p;
@@ -6670,10 +6699,12 @@ function createRenderer(game, canvas) {
     ctx.fillStyle = color;
     // 尾びれ。上が長い三日月形にして、サメらしく見せる
     ctx.beginPath();
+    // 尾びれの先は SHARK_TAIL_LENGTH_RATIO の位置。全長の計算と絵をそろえるため
+    const tail = CONFIG.SHARK_TAIL_LENGTH_RATIO;
     ctx.moveTo(-r * 0.9, 0);
-    ctx.lineTo(-r * 1.7, -r * 0.8);
-    ctx.lineTo(-r * 1.45, 0);
-    ctx.lineTo(-r * 1.6, r * 0.45);
+    ctx.lineTo(-r * tail, -r * 0.8);
+    ctx.lineTo(-r * (tail - 0.25), 0);
+    ctx.lineTo(-r * (tail - 0.1), r * 0.45);
     ctx.closePath();
     ctx.fill();
     // 背びれ。上から見た絵なので、体の真ん中から少し後ろに三角を立てる
