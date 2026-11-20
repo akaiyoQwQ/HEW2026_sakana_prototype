@@ -2271,7 +2271,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -4144,6 +4144,38 @@ function createGame() {
   }
 
   // 楕円の縁の上で、中心から toward の方向にある点。ボスのヒットエフェクトを体の表面に出すため
+  // 当たった時に数字とエフェクトを出す位置。ふだんは体の縁（edge）。
+  // 魚の中心がもう体の中に入り込んでいる時は、縁だと魚から遠く離れてしまうので、魚の位置に出す。
+  // 角だけが触れた時（billOnly）は、角の先が体の外にあることが多いので縁のまま
+  function hitFxPoint(edge, center, angle, halfW, heightRatio, billOnly) {
+    if (billOnly) {
+      return edge;
+    }
+    const fishPos = state.fish.pos;
+    const dx = fishPos.x - center.x;
+    const dy = fishPos.y - center.y;
+    const lx = dx * Math.cos(angle) + dy * Math.sin(angle);
+    const ly = -dx * Math.sin(angle) + dy * Math.cos(angle);
+    const a = halfW;
+    const b = halfW * heightRatio;
+    if ((lx / a) * (lx / a) + (ly / b) * (ly / b) <= 1) {
+      state.stats.hitFxInside++;
+      return vec2(fishPos.x, fishPos.y);
+    }
+    return edge;
+  }
+
+  // 円（はさみ・触手の節）に当たった時の、数字とエフェクトの位置。魚の中心が円の中なら魚の位置、外なら円の縁の魚に面した所
+  function circleHitFxPoint(c, rr) {
+    const fishPos = state.fish.pos;
+    const d = dist(fishPos, c);
+    if (d <= rr) {
+      state.stats.hitFxInside++;
+      return vec2(fishPos.x, fishPos.y);
+    }
+    return vec2(c.x + (fishPos.x - c.x) / d * rr, c.y + (fishPos.y - c.y) / d * rr);
+  }
+
   function bodyEdgePoint(center, angle, halfW, toward, heightRatio = CONFIG.ENEMY_BODY_HEIGHT_RATIO) {
     const dir = Math.atan2(toward.y - center.y, toward.x - center.x) - angle;
     const a = halfW;
@@ -4392,7 +4424,7 @@ function createGame() {
       const pts = billPoints();
       toward = pts[pts.length - 1];
     }
-    const contact = bodyEdgePoint(boss.pos, boss.facing, r, toward);
+    const contact = hitFxPoint(bodyEdgePoint(boss.pos, boss.facing, r, toward), boss.pos, boss.facing, r, CONFIG.ENEMY_BODY_HEIGHT_RATIO, billHit && !bodyHit);
 
     let damage = CONFIG.SHARK_DAMAGE;
     if (front) {
@@ -4509,7 +4541,7 @@ function createGame() {
             continue;
           }
           if (isSpinning()) {
-            t.hp -= bossHitFeedback(t.pts[k]);
+            t.hp -= bossHitFeedback(circleHitFxPoint(t.pts[k], thick));
             t.flash = CONFIG.FLASH_DURATION;
             state.stats.octoTentacleHits++;
             if (t.hp <= 0) {
@@ -4548,7 +4580,7 @@ function createGame() {
           bossAttackHit(c, CONFIG.KANI_CLAW_KNOCKBACK);
           return true;
         }
-        boss.clawHp[i] -= bossHitFeedback(c);
+        boss.clawHp[i] -= bossHitFeedback(circleHitFxPoint(c, clawR));
         boss.clawFlash[i] = CONFIG.FLASH_DURATION;
         state.stats.kaniClawHits++;
         if (boss.clawHp[i] <= 0) {
@@ -4584,10 +4616,12 @@ function createGame() {
       const pts = billPoints();
       toward = pts[pts.length - 1];
     }
-    const contact = bodyEdgePoint(boss.pos, boss.facing, r, toward, hr);
-    // カニは甲羅の上の真ん中（はさみの間）だけが弱点。そこ以外の甲羅に当たると弾かれるだけ
-    if (boss.kind === 'kani' && !kaniWeakSpot(boss, contact)) {
-      bossBounce(contact, CONFIG.KANI_SHELL_KNOCKBACK);
+    const edge = bodyEdgePoint(boss.pos, boss.facing, r, toward, hr);
+    const contact = hitFxPoint(edge, boss.pos, boss.facing, r, hr, billHit && !bodyHit);
+    // カニは甲羅の上の真ん中（はさみの間）だけが弱点。そこ以外の甲羅に当たると弾かれるだけ。
+    // 弱点かどうかは、今までどおり体の縁の当たった所で決める（エフェクトの位置とは別）
+    if (boss.kind === 'kani' && !kaniWeakSpot(boss, edge)) {
+      bossBounce(edge, CONFIG.KANI_SHELL_KNOCKBACK);
       return;
     }
     boss.hp -= bossHitFeedback(contact);
@@ -4630,7 +4664,7 @@ function createGame() {
       const pts = billPoints();
       toward = pts[pts.length - 1];
     }
-    const contact = bodyEdgePoint(boss.pos, boss.facing, CONFIG.BOSS_RADIUS, toward);
+    const contact = hitFxPoint(bodyEdgePoint(boss.pos, boss.facing, CONFIG.BOSS_RADIUS, toward), boss.pos, boss.facing, CONFIG.BOSS_RADIUS, CONFIG.ENEMY_BODY_HEIGHT_RATIO, billHit && !bodyHit);
 
     // 速いほど痛い。ほかのボスと同じ速さの倍率を掛ける
     const mult = speedDamageMult();
