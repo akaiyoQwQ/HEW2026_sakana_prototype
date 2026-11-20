@@ -1056,6 +1056,7 @@ const CONFIG = {
   SPEED_BURST_WIDTH: 3,         // px。線の太さ（画面の px）
   CURRENT_PUSH: 350,            // px/秒。海流が流れの向きへ押す速さ
   CURRENT_BOOST: 250,           // px/秒。海流に乗っている間、魚の速さに足す量
+  CURRENT_EXIT_DECAY_TIME: 1.5, // 秒。海流から出た後、足していた速さ（海流ぶん）を一定の速さで減らして0にするまでの時間。押す力は出たらすぐ止める
   CURRENT_DRAW_ALPHA: 0.25,     // 海流と火山口の帯の濃さ
   CURRENT_DASH_WIDTH: 6,        // px。流れの向きへ動く線の太さ
   CURRENT_DASH_LENGTH: 70,      // px。線の長さ
@@ -2149,6 +2150,7 @@ function createGame() {
       knock: vec2(0, 0),       // クラゲに跳ね返された勢い（px/秒）。だんだん弱まる
       ventVel: 0,              // 火山口に押し上げられている速さ（px/秒、上向き）
       inCurrent: false,        // 海流の帯の中にいるか
+      currentCarry: 0,         // 海流から出た後に持ち越している速さ（海流ぶん）。CURRENT_EXIT_DECAY_TIME で0へ
       angle: startDeg * DEG, // 魚の向き（頭の向き）。正面の判定と見た目に使う
       moveAngle: startDeg * DEG, // 進む向き。ふだんは angle と同じ。ドリフト中だけ押した瞬間の向きのまま残して横滑りする
       inputSpeed: 0,           // 入力で積んだぶん。上限あり。向きを合わせた入力が途切れると、保ったあと減っていく
@@ -2773,7 +2775,8 @@ function createGame() {
   // ブレーキをかける前の速度。5つの足し算。自動前進 + 入力ぶん + 回転ぶん + 撃破ぶん + ドリフトぶん
   function rawSpeed() {
     const fish = state.fish;
-    let current = 0;
+    // 海流ぶん。中にいる間は CURRENT_BOOST、出た後は currentCarry（減っていく持ち越し）
+    let current = fish.currentCarry;
     if (fish.inCurrent) {
       current = CONFIG.CURRENT_BOOST;
     }
@@ -3396,6 +3399,12 @@ function createGame() {
     if (fish.inCurrent && !wasInCurrent) {
       startSpeedBurst();
     }
+    // 海流ぶんの持ち越し。中にいる間は満タン、出たら一定の速さで減らす（押す力は出た瞬間に止まる）
+    if (fish.inCurrent) {
+      fish.currentCarry = CONFIG.CURRENT_BOOST;
+    } else if (fish.currentCarry > 0) {
+      fish.currentCarry = Math.max(0, fish.currentCarry - CONFIG.CURRENT_BOOST / CONFIG.CURRENT_EXIT_DECAY_TIME * dt);
+    }
 
     // 火山口：範囲の中にいる間、上向きの速さがたまっていき、出ると少しずつ抜ける。魚の操作とは別に足すので逆らえない
     let inVent = false;
@@ -3653,6 +3662,7 @@ function createGame() {
     fish.killBonus = 0;
     fish.killBonusHold = 0;
     fish.killBonusDecayFrom = 0;
+    fish.currentCarry = 0;
     // ドリフトのチャージと加速も失う。押し続けていれば、チャージはまた0からたまる
     fish.driftCharge = 0;
     fish.driftBoost = 0;
