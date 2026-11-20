@@ -805,7 +805,7 @@ const CONFIG = {
   BOSS_SPEED: 60,               // px/秒。ボスの泳ぐ速さ。遅めの指定
   BOSS_DAMAGE_NORMAL: 1,        // 通常体当たり1回のダメージ
   BOSS_SPIN_DAMAGE_MULT: 3,     // 倍。回転アタック中のダメージ倍率
-  BOSS_HIT_COOLDOWN: 0.5,       // 秒。ボスに当たってから次に当たり判定が戻るまで。体が大きいのですり抜けるために必要
+  BOSS_HIT_COOLDOWN: 0.5,       // 秒。ボスの攻撃に当たってから、次にボスの攻撃に当たるまで。ダメージには使わない（ダメージは外から表面に触れた瞬間だけ。v100）
   BOSS_RETARGET_TIME: 2.0,      // 秒。ボスが泳ぐ先を選び直す間隔
   BOSS_WANDER_MARGIN: 200,
   BOSS_TURN_RATE_DEG: 180,      // 度/秒。ボスが泳ぐ向きに顔（と楕円の当たり判定）を向ける速さ。行き先が変わった時にパッと向きが変わらないようにする
@@ -1964,7 +1964,8 @@ function kaniWalkRange(stage) {
 function makeOctoTentacles() {
   const list = [];
   for (let i = 0; i < CONFIG.OCTO_TENTACLES; i++) {
-    list.push({ hp: CONFIG.OCTO_TENTACLE_HP, flash: 0, aim: 0, aimFrom: 0, swing: false, pts: [] });
+    // touch は前の判定でこの触手に触れていたか。外から触れた瞬間だけダメージを入れるため
+    list.push({ hp: CONFIG.OCTO_TENTACLE_HP, flash: 0, aim: 0, aimFrom: 0, swing: false, pts: [], touch: false });
   }
   return list;
 }
@@ -2174,7 +2175,8 @@ function createGame() {
       driftCooldown: 0,        // 次のドリフトを出せるまでの残り時間。0より大きい間は押しても始まらない
       driftHitWindow: 0,       // ダッシュの受付時間の残り。0より大きい間に倒す・壊す・ボスに当てると、クールタイムが0に戻る
       invincible: 0,           // 被弾後の無敵の残り時間
-      bossHitCooldown: 0,      // ボスに次に当たれるまでの残り時間
+      bossHitCooldown: 0,      // ボスの攻撃（噛みつき・針・触手・口・振り回すはさみ・甲羅）に次に当たるまでの残り時間。ダメージには使わない
+      bossTouch: false,        // 前の判定でボスの体に触れていたか。外から触れた瞬間（false → true）だけダメージを入れるため
       flash: 0,                // ヒットフラッシュの残り時間
       roll: 0,                 // きりもみの見た目の回転角（進行方向を軸にした角度）
       accelFx: false,          // 入力加速の水流線を出すか。加速の判定をしている updateFish で決める
@@ -2261,6 +2263,7 @@ function createGame() {
       clawHp: [CONFIG.KANI_CLAW_HP, CONFIG.KANI_CLAW_HP], // カニのはさみの体力 [左, 右]。0 で壊れている
       clawAngle: [restRad, restRad], // カニのはさみの腕の角度 [左, 右]（真上から外側へ、ラジアン）
       clawFlash: [0, 0],       // カニのはさみに当てた時の白い光の残り時間
+      clawTouch: [false, false], // カニのはさみに前の判定で触れていたか。外から触れた瞬間だけダメージを入れるため
       swingCenter: 0,          // タコ：今回振る向きの真ん中（予告の瞬間の魚の方）
       pos: bossPos,
       target: vec2(bossPos.x, bossPos.y),
@@ -2299,7 +2302,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0, bossInsideIgnored: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -4438,20 +4441,27 @@ function createGame() {
     const r = bossRadius(boss);
     const bodyHit = hitsBody(boss.pos, boss.facing, r);
     const billHit = billTouchesBody(boss.pos, boss.facing, r);
-    if (!bodyHit && !billHit) {
+    // ダメージは体の外から表面に触れた瞬間だけ。中に潜り込んでいる間は入らない
+    const touching = bodyHit || billHit;
+    const entered = touching && !fish.bossTouch;
+    fish.bossTouch = touching;
+    if (!touching) {
       return;
     }
-    // 体が大きいので毎フレーム当たってしまう。どの結果でも一度は離れてもらう
-    fish.bossHitCooldown = CONFIG.BOSS_HIT_COOLDOWN;
     const front = inSharkFront(boss);
 
-    // 突進中の顔は噛む側。サメにはダメージが入らない。噛むのは1回の突進で1度だけ
+    // 突進中の顔は噛む側。サメにはダメージが入らない。噛むのは1回の突進で1度だけ（攻撃なので BOSS_HIT_COOLDOWN を使う）
     if (boss.phase === 'dash' && front) {
-      if (!boss.bitThisDash) {
+      if (!boss.bitThisDash && fish.bossHitCooldown <= 0) {
         boss.bitThisDash = true;
         slowFish();
+        fish.bossHitCooldown = CONFIG.BOSS_HIT_COOLDOWN;
         state.stats.sharkBites++;
       }
+      return;
+    }
+    if (!entered) {
+      state.stats.bossInsideIgnored++;
       return;
     }
 
@@ -4552,47 +4562,68 @@ function createGame() {
     spawnDamageNumber(contact, damage, kind);
     onDriftDashHit();
     addBossHitBonus(kind);
-    state.fish.bossHitCooldown = CONFIG.BOSS_HIT_COOLDOWN;
     return damage;
   }
 
   // ボスの攻撃の当たり。当たったら true（そのフレームは本体へのダメージを見ない）
+  // ボスの攻撃と部位（はさみ・触手）の当たり。当たったら true（そのフレームは本体へのダメージを見ない）。
+  // 攻撃に当たるのは BOSS_HIT_COOLDOWN が明けている時だけ。部位へのダメージは、その部位に外から触れた瞬間だけ
   function collideBossAttacks(boss, bodyTouched) {
+    const fish = state.fish;
+    const ready = fish.bossHitCooldown <= 0;
     if (boss.kind === 'puffer') {
-      // ふくらんでいる間は体じゅうが針。回転でも弾かれる
+      // ふくらんでいる間は体じゅうが針。回転でも弾かれる。針の間は本体へのダメージもない
       if (boss.phase === 'puff' && bodyTouched) {
-        bossAttackHit(boss.pos, CONFIG.PUFFER_SPIKE_KNOCKBACK);
+        if (ready) {
+          bossAttackHit(boss.pos, CONFIG.PUFFER_SPIKE_KNOCKBACK);
+        }
         return true;
       }
     } else if (boss.kind === 'octo') {
-      // 触手はいつでも当たる。回転中なら触手にダメージ（弾かれない）、そうでなければ弾かれて減速
+      // 触手はいつでも当たる。回転中なら触手にダメージ（外から触れた瞬間だけ。弾かれない）、そうでなければ弾かれて減速
       const r = bossRadius(boss);
+      let result = false;
       for (const t of boss.tentacles) {
-        if (t.hp <= 0) {
+        let hitPoint = null;
+        let hitThick = 0;
+        if (t.hp > 0) {
+          for (let k = 1; k < t.pts.length; k++) {
+            const thick = r * octoThickness(k);
+            if (fishTouchesCircle(t.pts[k], thick)) {
+              hitPoint = t.pts[k];
+              hitThick = thick;
+              break;
+            }
+          }
+        }
+        const touching = hitPoint !== null;
+        const entered = touching && !t.touch;
+        t.touch = touching;
+        if (!touching || result) {
           continue;
         }
-        for (let k = 1; k < t.pts.length; k++) {
-          const thick = r * octoThickness(k);
-          if (!fishTouchesCircle(t.pts[k], thick)) {
-            continue;
-          }
-          if (isSpinning()) {
-            t.hp -= bossHitFeedback(circleHitFxPoint(t.pts[k], thick));
+        if (isSpinning()) {
+          if (entered) {
+            t.hp -= bossHitFeedback(circleHitFxPoint(hitPoint, hitThick));
             t.flash = CONFIG.FLASH_DURATION;
             state.stats.octoTentacleHits++;
             if (t.hp <= 0) {
               t.hp = 0;
-              spawnBurstFx(t.pts[k], CONFIG.HIT_FX_SCALE_BOSS_HIT);
+              spawnBurstFx(hitPoint, CONFIG.HIT_FX_SCALE_BOSS_HIT);
               state.stats.octoTentacleCuts++;
             }
-          } else {
-            bossAttackHit(t.pts[k], CONFIG.OCTO_TENTACLE_KNOCKBACK);
+            result = true;
           }
-          return true;
+        } else if (ready) {
+          bossAttackHit(hitPoint, CONFIG.OCTO_TENTACLE_KNOCKBACK);
+          result = true;
         }
       }
+      if (result) {
+        return true;
+      }
     } else if (boss.kind === 'deep') {
-      if (boss.phase === 'suck' && !boss.attackHit) {
+      if (boss.phase === 'suck' && !boss.attackHit && ready) {
         const m = deepMouthPos(boss);
         if (fishTouchesCircle(m, bossRadius(boss) * CONFIG.DEEP_MOUTH_RATIO)) {
           boss.attackHit = true;
@@ -4602,19 +4633,26 @@ function createGame() {
       }
     } else if (boss.kind === 'kani') {
       const clawR = bossRadius(boss) * CONFIG.KANI_CLAW_RADIUS;
+      let result = false;
       for (let i = 0; i < 2; i++) {
-        if (boss.clawHp[i] <= 0) {
-          continue;
-        }
         const side = i * 2 - 1;
         const c = kaniClawPos(boss, side, boss.clawAngle[i]);
-        if (!fishTouchesCircle(c, clawR)) {
+        const touching = boss.clawHp[i] > 0 && fishTouchesCircle(c, clawR);
+        const entered = touching && !boss.clawTouch[i];
+        boss.clawTouch[i] = touching;
+        if (!touching || result) {
           continue;
         }
-        // 振り回している間は弾かれる。止まっている間（構えと予告）は、はさみにダメージ。本体の体力は減らない
+        // 振り回している間は弾かれる。止まっている間（構えと予告）は、外から触れた瞬間だけはさみにダメージ。本体の体力は減らない
         if (boss.phase === 'swing') {
-          bossAttackHit(c, CONFIG.KANI_CLAW_KNOCKBACK);
-          return true;
+          if (ready) {
+            bossAttackHit(c, CONFIG.KANI_CLAW_KNOCKBACK);
+            result = true;
+          }
+          continue;
+        }
+        if (!entered) {
+          continue;
         }
         boss.clawHp[i] -= bossHitFeedback(circleHitFxPoint(c, clawR));
         boss.clawFlash[i] = CONFIG.FLASH_DURATION;
@@ -4627,6 +4665,9 @@ function createGame() {
           state.shakeAmp = CONFIG.TRAP_SHAKE;
           state.stats.kaniClawBreaks++;
         }
+        result = true;
+      }
+      if (result) {
         return true;
       }
     }
@@ -4641,10 +4682,18 @@ function createGame() {
     const hr = bossHeightRatio(boss.kind);
     const bodyHit = hitsBody(boss.pos, boss.facing, r, hr);
     const billHit = billTouchesBody(boss.pos, boss.facing, r, hr);
-    if (collideBossAttacks(boss, bodyHit || billHit)) {
+    // ダメージは体の外から表面に触れた瞬間だけ。中に潜り込んでいる間は入らない（攻撃に当たった時も、触れているかは覚えておく）
+    const touching = bodyHit || billHit;
+    const entered = touching && !fish.bossTouch;
+    fish.bossTouch = touching;
+    if (collideBossAttacks(boss, touching)) {
       return;
     }
-    if (!bodyHit && !billHit) {
+    if (!touching) {
+      return;
+    }
+    if (!entered) {
+      state.stats.bossInsideIgnored++;
       return;
     }
     let toward = fish.pos;
@@ -4674,15 +4723,16 @@ function createGame() {
     if (!boss.alive) {
       return;
     }
-    if (fish.bossHitCooldown > 0) {
-      return;
-    }
     if (boss.kind === 'shark') {
       collideShark();
       return;
     }
     if (bossSpec(boss.kind) !== null) {
       collideBigBoss();
+      return;
+    }
+    // 仮のボス（今は使っていない）は前のまま、当たった後 BOSS_HIT_COOLDOWN の間は当たりを止める
+    if (fish.bossHitCooldown > 0) {
       return;
     }
     const bodyHit = hitsBody(boss.pos, boss.facing, CONFIG.BOSS_RADIUS);
