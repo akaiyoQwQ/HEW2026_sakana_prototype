@@ -487,6 +487,7 @@ const CONFIG = {
   // ===== タイトルと設定 =====
   GAME_TITLE: '鮮度限界突破',  // ゲームの名前。メニューの見出しとタブの名前に使う
   SETTING_TIME_LIMIT_DEFAULT: true, // 制限時間の最初の値。OFF なら時間切れで崩れない（ゲージは減り続けてランクも出る）
+  SETTING_INPUT_CAP_ON_DEFAULT: true, // 入力の上限を最初から ON にするか。ON なら入力ぶんが SETTING_INPUT_CAP_DEFAULT で止まる（v91 までと同じ手触り）
   SETTING_INPUT_CAP_DEFAULT: 700,   // px/秒。入力の上限の最初の値（上限を ON にした時に使う）
   SETTING_INPUT_CAP_MIN: 100,       // px/秒。上限の値の下限
   SETTING_INPUT_CAP_MAX: 3000,      // px/秒。上限の値の上限
@@ -1212,7 +1213,7 @@ const SETTINGS = {
   spin: true,                   // 回転アタック（右クリック・タッチの回転と、ドリフトを離した時の黄色い回転）
   drift: true,                  // ドリフト（左ボタン・スペース）
   timeLimit: CONFIG.SETTING_TIME_LIMIT_DEFAULT, // 制限時間。ステージを始める時に読む
-  inputCapOn: false,            // 入力の上限を使うか
+  inputCapOn: CONFIG.SETTING_INPUT_CAP_ON_DEFAULT, // 入力の上限を使うか
   inputCap: CONFIG.SETTING_INPUT_CAP_DEFAULT, // 入力の上限の値
 };
 
