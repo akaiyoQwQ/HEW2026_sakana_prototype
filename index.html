@@ -501,7 +501,7 @@ const CONFIG = {
   INPUT_DECAY_TIME: 3.0,        // 秒。減り始めてから入力ぶんが0に戻るまで。減り始めた時の量に関係なくこの時間で戻る
   INPUT_ALIGN_ANGLE_DEG: 45,    // 度。入力方向と進行方向の差がこれ以内なら「同じ方向」とみなして加速する
   SPIN_BONUS_PER_HIT: 65,       // px/秒。回転アタックで敵1体に当てるごとに積み上がる速度。上限なし
-  NORMAL_KILL_BONUS: 30,        // px/秒。ふつうの体当たりで1体倒すごとに積む速度（撃破ぶん）。回転アタックより小さくして、回転の方が得なままにする
+  NORMAL_KILL_BONUS: 50,        // px/秒。ふつうの体当たりで1体倒すごとに積む速度（撃破ぶん）。回転アタックより小さくして、回転の方が得なままにする（差は小さめ）。ボスに当てた時もこの値
                                 // 撃破ぶんの保つ時間と減る時間は、下の SPIN_BONUS_HOLD_TIME / SPIN_BONUS_DECAY_TIME を共用する。魚の色は変えない
   SPIN_BONUS_HOLD_TIME: 2.0,    // 秒。最後に回転で積んでから、回転ぶんが減り始めるまでの猶予。長いほど次の敵まで速度を持っていける
   SPIN_BONUS_DECAY_TIME: 3.0,   // 秒。減り始めてから回転ぶんが0に戻るまでの時間。積んだ量に関係なくこの時間で戻る。長いほどゆるやか
@@ -818,8 +818,6 @@ const CONFIG = {
   ZAKO_DAMAGE_NORMAL: 1,        // 雑魚を体当たりで倒した時に出す数字（表示だけ。雑魚は今までどおり1回で倒れる）
   ZAKO_DAMAGE_SPIN: 2,          // 雑魚を回転で倒した時に出す数字（ボスに当てた時と同じ数え方）
 
-  BOSS_HIT_BONUS: 30,           // ボスにダメージを入れた時（体当たり）に積む撃破ぶん。雑魚（NORMAL_KILL_BONUS）と同じ量（全ボス・カニのはさみも）
-  BOSS_SPIN_HIT_BONUS: 65,      // ボスにダメージを入れた時（回転）に積む回転ぶん。雑魚（SPIN_BONUS_PER_HIT）と同じ量
   // 速いほど攻撃が痛い。ダメージ ＝ 元のダメージ ×（1 ＋（速さ − BASE_SPEED）÷ STEP）。上限なし。ボスとカニのはさみに効き、雑魚は表示の数字だけ
   SPEED_DAMAGE_BASE_SPEED: 220, // px/秒。これより速い分だけダメージが上がる（巡航と同じ）
   SPEED_DAMAGE_STEP: 350,       // px/秒。速さがこれだけ上がるごとに、ダメージが元の1倍ぶん増える（速さ920で3倍）
@@ -3273,9 +3271,9 @@ function createGame() {
   // ボスの攻撃に当たって弾かれた時は呼ばない
   function addBossHitBonus(kind) {
     if (kind === 'spin') {
-      addBonus('spinBonus', CONFIG.BOSS_SPIN_HIT_BONUS);
+      addBonus('spinBonus', CONFIG.SPIN_BONUS_PER_HIT);
     } else {
-      addBonus('killBonus', CONFIG.BOSS_HIT_BONUS);
+      addBonus('killBonus', CONFIG.NORMAL_KILL_BONUS);
     }
     state.stats.bossHitBonuses++;
   }
