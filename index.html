@@ -424,10 +424,10 @@ function diagonal(startX, startY, count, gapX, gapY) {
 const CONFIG = {
   // ===== 魚の速度 =====
   BASE_SPEED: 220,              // px/秒。何もしなくても自動で前に進む速さ。上げると全体が速くなる
-  INPUT_SPEED_MAX: 700,         // px/秒。進行方向と同じ入力で積める速度の上限。入力ぶんの頭打ち
+  INPUT_SPEED_REF: 700,         // px/秒。入力ぶんの基準（上限ではない。v92 で上限はなくした）。曲がる円の大きさを保ち始める速さと、水流線の色の段階の区切りに使う
+  INPUT_ACCEL_RATE: 175,        // px/秒。向きを合わせている間、1秒あたりに入力ぶんが増える量。上限なしで増え続ける
   INPUT_HOLD_TIME: 1.0,         // 秒。向きを合わせた入力が途切れてから、入力ぶんが減り始めるまで
   INPUT_DECAY_TIME: 3.0,        // 秒。減り始めてから入力ぶんが0に戻るまで。減り始めた時の量に関係なくこの時間で戻る
-  INPUT_ACCEL_TIME: 4,          // 秒。入力ぶんが0から INPUT_SPEED_MAX に届くまでの時間。1秒あたりの加速量は INPUT_SPEED_MAX ÷ これで計算する
   INPUT_ALIGN_ANGLE_DEG: 45,    // 度。入力方向と進行方向の差がこれ以内なら「同じ方向」とみなして加速する
   SPIN_BONUS_PER_HIT: 65,       // px/秒。回転アタックで敵1体に当てるごとに積み上がる速度。上限なし
   NORMAL_KILL_BONUS: 30,        // px/秒。ふつうの体当たりで1体倒すごとに積む速度（撃破ぶん）。回転アタックより小さくして、回転の方が得なままにする
@@ -436,9 +436,9 @@ const CONFIG = {
   SPIN_BONUS_DECAY_TIME: 3.0,   // 秒。減り始めてから回転ぶんが0に戻るまでの時間。積んだ量に関係なくこの時間で戻る。長いほどゆるやか
 
   // ===== 旋回 =====
-  // 旋回。入力で加速しきった速度（BASE_SPEED + INPUT_SPEED_MAX）までは角速度一定。
+  // 旋回。基準の速度（BASE_SPEED + INPUT_SPEED_REF）までは角速度一定。
   // それを超える猛スピードでは、加速しきった時と同じ大きさの円を保つ（角速度を速度に合わせて上げる）。
-  // 境目の半径は (BASE_SPEED + INPUT_SPEED_MAX) ÷ 角速度 で計算するので、それらを変えても自動でついてくる
+  // 境目の半径は (BASE_SPEED + INPUT_SPEED_REF) ÷ 角速度 で計算するので、それらを変えても自動でついてくる
   TURN_RATE_DEG: 240,           // 度/秒。加速しきった速度までの旋回の角速度。上げると全体に小回りになる
 
   // ===== 回転アタック =====
@@ -536,9 +536,9 @@ const CONFIG = {
   DRIFT_RECOVER_RATE: 10,       // 1/秒。離した後に速度の倍率が1へ戻る速さ。大きいほどすぐ戻る
   DRIFT_TURN_MULT: 2.2,         // 倍。押している間に頭の向きが変わる速さ（旋回の角速度の倍率）。進む向きは変わらないので、狙いを定める速さになる
   DRIFT_CHARGE_TIME: 0.6,       // 秒。押し続けてチャージ完了になるまでの時間
-  DRIFT_BOOST_SPEED: 400,       // px/秒。チャージ完了で離した時に足す速度
-  DRIFT_BOOST_HOLD: 0.7,        // 秒。離してから、足した速度を最大のまま保つ時間
-  DRIFT_BOOST_DECAY: 0.7,       // 秒。保ったあと、足した速度が0になるまでの時間（直線で減る）
+  DRIFT_BOOST_SPEED: 400,       // px/秒。チャージ完了で離した時に、今のドリフトぶんへ足す速度（積み重なる。上限なし）
+  DRIFT_BOOST_HOLD: 0.7,        // 秒。最後に足してから、ドリフトぶんをそのまま保つ時間
+  DRIFT_BOOST_DECAY: 0.7,       // 秒。保ったあと、ドリフトぶんが0になるまでの時間（直線で減る。積んだ量に関係なくこの時間）
   DRIFT_FORCE_SPIN: true,       // true なら、回転アタックの待ち時間中や回転中でも、解放の回転を出す（出し直す）
 
   // ===== ドリフトのクールタイム =====
@@ -629,10 +629,10 @@ const CONFIG = {
   ACCEL_FX_LIFETIME: 0.25,      // 秒。線が消えるまでの時間
   ACCEL_FX_SPREAD: 14,          // px。線が進行方向の軸から横にばらける幅（片側）
   ACCEL_FX_WIDTH: 2,            // px。線の太さ
-  ACCEL_FX_SHOW_AT_CAP: true,   // true なら入力ぶんが上限に届いても出し続ける。false なら上限に届いたら止める
+  ACCEL_FX_SHOW_AT_CAP: true,   // true なら入力ぶんが基準（INPUT_SPEED_REF）を超えても出し続ける。false なら基準に届いたら止める
 
   // ===== 入力加速の段階（水流線の色だけを変える。魚の体の色は変えない） =====
-  // 区切りは INPUT_SPEED_MAX に対する割合で持つ。上限を変えても区切りが自動でついてくる
+  // 区切りは INPUT_SPEED_REF に対する割合で持つ。基準を変えても区切りが自動でついてくる。基準を超えても一番上の段階のまま
   INPUT_STAGE_START_RATIOS: [0, 1 / 3, 0.9], // 各段階が始まる入力ぶんの割合（上限に対して）。段階1は0から。
                                 // 段階3（赤）は上限のほぼ手前（0.9）から。要素を足すと段階が増え、色は CSS の --streak-stage1〜3（足りない分は stage3 の色）
   STAGE_UP_FX_ENABLED: true,    // true なら段階が上がった瞬間に、その段階の色の水流線をまとめて出す。false で色の切り替えだけ
@@ -709,7 +709,6 @@ const CONFIG = {
   BOSS_SPEED: 60,               // px/秒。ボスの泳ぐ速さ。遅めの指定
   BOSS_DAMAGE_NORMAL: 1,        // 通常体当たり1回のダメージ
   BOSS_SPIN_DAMAGE_MULT: 3,     // 倍。回転アタック中のダメージ倍率
-  BOSS_DAMAGE_PER_SPEED: 0.004, // 速度1px/秒ごとに足されるダメージ。超スピード超ダメージ用。0で無効
   BOSS_HIT_COOLDOWN: 0.5,       // 秒。ボスに当たってから次に当たり判定が戻るまで。体が大きいのですり抜けるために必要
   BOSS_RETARGET_TIME: 2.0,      // 秒。ボスが泳ぐ先を選び直す間隔
   BOSS_WANDER_MARGIN: 200,
@@ -747,8 +746,11 @@ const CONFIG = {
   ZAKO_DAMAGE_NORMAL: 1,        // 雑魚を体当たりで倒した時に出す数字（表示だけ。雑魚は今までどおり1回で倒れる）
   ZAKO_DAMAGE_SPIN: 2,          // 雑魚を回転で倒した時に出す数字（ボスに当てた時と同じ数え方）
 
-  BOSS_HIT_BONUS: 20,           // ボスにダメージを入れた時（体当たり）に積む撃破ぶん。雑魚を倒した時と同じく速さに足す（全ボス・カニのはさみも）
-  BOSS_SPIN_HIT_BONUS: 50,      // ボスにダメージを入れた時（回転）に積む回転ぶん
+  BOSS_HIT_BONUS: 30,           // ボスにダメージを入れた時（体当たり）に積む撃破ぶん。雑魚（NORMAL_KILL_BONUS）と同じ量（全ボス・カニのはさみも）
+  BOSS_SPIN_HIT_BONUS: 65,      // ボスにダメージを入れた時（回転）に積む回転ぶん。雑魚（SPIN_BONUS_PER_HIT）と同じ量
+  // 速いほど攻撃が痛い。ダメージ ＝ 元のダメージ ×（1 ＋（速さ − BASE_SPEED）÷ STEP）。上限なし。ボスとカニのはさみに効き、雑魚は表示の数字だけ
+  SPEED_DAMAGE_BASE_SPEED: 220, // px/秒。これより速い分だけダメージが上がる（巡航と同じ）
+  SPEED_DAMAGE_STEP: 350,       // px/秒。速さがこれだけ上がるごとに、ダメージが元の1倍ぶん増える（速さ920で3倍）
   BOSS_BODY_DAMAGE: 1,          // 本体に当てた時のダメージ（フグ・タコ・深海魚・カニ）。向きは問わない
   BOSS_BODY_SPIN_MULT: 2,       // 倍。回転中に本体へ当てた時のダメージ倍率
   BOSS_TURN_RATE_DEG: 180,      // 度/秒。うろうろしている間に魚の方へ顔を向ける速さ
@@ -1019,14 +1021,14 @@ const CONFIG = {
   KILL_FX_FOLLOW_DIRECTION: true, // true なら倒した瞬間の魚の進む向きに回して出す（絵は右へ弾ける向き）。false なら絵のまま
   KILL_FX_REALTIME: true,       // true なら実時間で再生（ヒットストップ中も止まらない）。false ならゲーム内時間（ヒットストップ中はほぼ止まる）
   KILL_FX_BLEND: 'source-over', // 重ね方。'source-over' は普通に重ねる。'lighter' にすると光るように明るく足す
-  ENEMY_RADIUS: 46.5,            // px。雑魚の胴体（楕円）の横の半径。当たり判定も同じ楕円
+  ENEMY_RADIUS: 60.45,          // px。雑魚の胴体（楕円）の横の半径。当たり判定も同じ楕円。v92 で 46.5 の1.3倍にした
   BOSS_RADIUS: 140,             // px。ボスの胴体（楕円）の横の半径。当たり判定も同じ楕円
   ENEMY_BODY_HEIGHT_RATIO: 0.65, // 倍。胴体の楕円の縦の半径が、横の半径の何倍か。雑魚とボスで共用。1で正円、小さいほど細長い（当たり判定も細くなる）
   VIEW_HEIGHT: 720,             // px。画面の縦に収めるステージの高さ（引いていない時）。小さくすると拡大される
   // 速いほどカメラを引いて広く映す。引き具合は「映す縦の広さ ÷ VIEW_HEIGHT」の倍率
   CAMERA_ZOOM_SPEED_START: 150, // 速さ。これ以下は引かない（1倍）
-  CAMERA_ZOOM_SPEED_FULL: 1400, // 速さ。ここで上限まで引ききる。その間は速さに比例
-  CAMERA_ZOOM_MAX: 1.6,         // 倍。引き具合の上限。1.6 なら縦 720 → 1152 を映す
+  CAMERA_ZOOM_SPEED_FULL: 1400, // 速さ。ここで CAMERA_ZOOM_MAX 倍になる。START からここまでの比率で、超えた後も引き続ける
+  CAMERA_ZOOM_MAX: 1.6,         // 倍。速さ CAMERA_ZOOM_SPEED_FULL の時の引き具合（1.6 なら縦 720 → 1152）。上限ではなく、それより速ければ同じ比率でさらに引く（v92）
   CAMERA_ZOOM_OUT_RATE: 3,      // 1/秒。引く時に目標の引き具合へ近づく速さ。大きいほどすぐ引く
   CAMERA_ZOOM_IN_RATE: 1.2,     // 1/秒。戻る時の速さ。引く時より遅くして、速さの細かい上下でカメラが出入りしないようにする
   CAMERA_LEAD: 160,             // px。魚の進行方向側にカメラをずらす量。先が見えるようにする
@@ -1930,6 +1932,7 @@ function createGame() {
       driftBrake: 1,           // 速度に掛ける倍率。押している間 DRIFT_SPEED_RATIO へ、離すと1へ近づく
       driftBoost: 0,           // ドリフト解放で足した速度（ドリフトぶん）
       driftBoostHold: 0,       // ドリフトぶんを最大のまま保つ残り時間
+      driftBoostDecayFrom: 0,  // 減り始めた時のドリフトぶん。この量を DRIFT_BOOST_DECAY 秒で0にする。0 はまだ減り始めていない
       driftCooldown: 0,        // 次のドリフトを出せるまでの残り時間。0より大きい間は押しても始まらない
       driftHitWindow: 0,       // ダッシュの受付時間の残り。0より大きい間に倒す・壊す・ボスに当てると、クールタイムが0に戻る
       invincible: 0,           // 被弾後の無敵の残り時間
@@ -2093,7 +2096,7 @@ function createGame() {
   // 入力ぶんが0でも、水流線が出るのは加速し始めた時なので段階1として扱う
   function inputStage() {
     // 割合の小さい方から見て、入力ぶんが届いている一番上の段階を返す
-    const ratio = state.fish.inputSpeed / CONFIG.INPUT_SPEED_MAX;
+    const ratio = state.fish.inputSpeed / CONFIG.INPUT_SPEED_REF;
     let stage = 1;
     for (let i = 1; i < CONFIG.INPUT_STAGE_START_RATIOS.length; i++) {
       if (ratio >= CONFIG.INPUT_STAGE_START_RATIOS[i]) {
@@ -2553,7 +2556,7 @@ function createGame() {
     const baseRate = CONFIG.TURN_RATE_DEG * DEG;
     // 入力で加速しきった時の円の半径。これより大回りにはしない
     // （角速度一定のままだと半径が速度に比例して、回転で積んだ猛スピードでは曲がれなくなるため）
-    const capRadius = (CONFIG.BASE_SPEED + CONFIG.INPUT_SPEED_MAX) / baseRate;
+    const capRadius = (CONFIG.BASE_SPEED + CONFIG.INPUT_SPEED_REF) / baseRate;
     // その半径を保つのに必要な角速度。加速しきった速度以下では baseRate より小さいので使われない
     const radiusRate = totalSpeed() / capRadius;
     let rate = baseRate;
@@ -2803,8 +2806,10 @@ function createGame() {
     // 離した瞬間に、進む向きを頭の向きへ切り替える。滑りながら定めた狙いの方へ飛び出す
     fish.moveAngle = fish.angle;
     if (isDriftCharged() && isPlaying()) {
-      fish.driftBoost = CONFIG.DRIFT_BOOST_SPEED;
+      // 置き換えずに足す。続けてダッシュすると積み重なる
+      fish.driftBoost += CONFIG.DRIFT_BOOST_SPEED;
       fish.driftBoostHold = CONFIG.DRIFT_BOOST_HOLD;
+      fish.driftBoostDecayFrom = 0;
       startSpeedBurst();
       // 解放で一気に走り出したいので、ブレーキもその場で解く
       fish.driftBrake = 1;
@@ -2869,13 +2874,17 @@ function createGame() {
       }
     }
 
-    // ドリフトぶん。HOLD のあいだ最大、そのあと DECAY で直線に0へ
+    // ドリフトぶん。HOLD のあいだそのまま、そのあと減り始めた時の量を DECAY 秒で直線に0へ（積んだ量に関係なく同じ時間）
     if (fish.driftBoostHold > 0) {
       fish.driftBoostHold -= dt;
     } else if (fish.driftBoost > 0) {
-      fish.driftBoost -= CONFIG.DRIFT_BOOST_SPEED / CONFIG.DRIFT_BOOST_DECAY * dt;
+      if (fish.driftBoostDecayFrom <= 0) {
+        fish.driftBoostDecayFrom = fish.driftBoost;
+      }
+      fish.driftBoost -= fish.driftBoostDecayFrom / CONFIG.DRIFT_BOOST_DECAY * dt;
       if (fish.driftBoost < 0) {
         fish.driftBoost = 0;
+        fish.driftBoostDecayFrom = 0;
       }
     }
   }
@@ -3018,6 +3027,12 @@ function createGame() {
   }
 
   // 加速が入った時に、画面全体の風切りの線を SPEED_BURST_TIME 秒流す
+  // 速さによるダメージの倍率。基準より遅ければ1倍、上は止めない
+  function speedDamageMult() {
+    const over = Math.max(0, totalSpeed() - CONFIG.SPEED_DAMAGE_BASE_SPEED);
+    return 1 + over / CONFIG.SPEED_DAMAGE_STEP;
+  }
+
   // ボスにダメージを入れた時の加速。雑魚を倒した時と同じ addBonus で積むので、保ち方・減り方・風切りの演出も同じになる。
   // ボスの攻撃に当たって弾かれた時は呼ばない
   function addBossHitBonus(kind) {
@@ -3382,6 +3397,7 @@ function createGame() {
     fish.driftCharge = 0;
     fish.driftBoost = 0;
     fish.driftBoostHold = 0;
+    fish.driftBoostDecayFrom = 0;
     fish.invincible = CONFIG.DAMAGE_INVINCIBLE_TIME;
     triggerHitstop('damage');
     state.stats.damaged++;
@@ -3970,14 +3986,14 @@ function createGame() {
       triggerHitstop('spin');
       // 雑魚を倒した時は絵のエフェクトだけを出す（図形のしぶき・電撃・輪・火花は出さない）
       spawnKillFx(enemy.pos, 'spin');
-      spawnDamageNumber(enemy.pos, CONFIG.ZAKO_DAMAGE_SPIN, 'spin');
+      spawnDamageNumber(enemy.pos, CONFIG.ZAKO_DAMAGE_SPIN * speedDamageMult(), 'spin');
       state.stats.spinKills++;
     } else {
       // 撃破ぶんを積む（回転アタックより少ない）
       addBonus('killBonus', CONFIG.NORMAL_KILL_BONUS);
       triggerHitstop('normal');
       spawnKillFx(enemy.pos, 'normal');
-      spawnDamageNumber(enemy.pos, CONFIG.ZAKO_DAMAGE_NORMAL, 'normal');
+      spawnDamageNumber(enemy.pos, CONFIG.ZAKO_DAMAGE_NORMAL * speedDamageMult(), 'normal');
     }
     state.stats.kills++;
     let refill = CONFIG.SCORE_KILL_REFILL;
@@ -4152,6 +4168,7 @@ function createGame() {
       damage = damage * CONFIG.SHARK_SPIN_MULT;
       kind = 'spin';
     }
+    damage = damage * speedDamageMult();
     boss.hp -= damage;
     boss.flash = CONFIG.FLASH_DURATION;
     triggerHitstop(kind);
@@ -4206,6 +4223,7 @@ function createGame() {
       damage = damage * CONFIG.BOSS_BODY_SPIN_MULT;
       kind = 'spin';
     }
+    damage = damage * speedDamageMult();
     triggerHitstop(kind);
     // 図形のエフェクトの上に、雑魚を倒した時の絵のエフェクトも重ねる
     spawnHitFx(contact, kind, CONFIG.HIT_FX_SCALE_BOSS_HIT);
@@ -4338,10 +4356,10 @@ function createGame() {
     }
     const contact = bodyEdgePoint(boss.pos, boss.facing, CONFIG.BOSS_RADIUS, toward);
 
-    // 速いほど痛い。基本ダメージに速度ぶんを足す
-    const speedDamage = totalSpeed() * CONFIG.BOSS_DAMAGE_PER_SPEED;
+    // 速いほど痛い。ほかのボスと同じ速さの倍率を掛ける
+    const mult = speedDamageMult();
     if (isSpinning()) {
-      const spinDamage = (CONFIG.BOSS_DAMAGE_NORMAL + speedDamage) * CONFIG.BOSS_SPIN_DAMAGE_MULT;
+      const spinDamage = CONFIG.BOSS_DAMAGE_NORMAL * CONFIG.BOSS_SPIN_DAMAGE_MULT * mult;
       boss.hp -= spinDamage;
       boss.flash = CONFIG.FLASH_DURATION;
       triggerHitstop('spin');
@@ -4351,7 +4369,7 @@ function createGame() {
       onDriftDashHit();
       addBossHitBonus('spin');
     } else if (billHit || isFrontalHit(boss.pos)) {
-      const normalDamage = CONFIG.BOSS_DAMAGE_NORMAL + speedDamage;
+      const normalDamage = CONFIG.BOSS_DAMAGE_NORMAL * mult;
       boss.hp -= normalDamage;
       boss.flash = CONFIG.FLASH_DURATION;
       triggerHitstop('normal');
@@ -4392,21 +4410,17 @@ function createGame() {
       const maxTurn = turnRate() * dt;
       fish.angle += clamp(diff, -maxTurn, maxTurn);
 
-      // 進行方向と同じ向きの入力なら加速。上限で止める
+      // 進行方向と同じ向きの入力なら加速。上限はない（向きを合わせ続ける限り増え続ける）
       if (Math.abs(diff) <= steer.alignRad) {
         aligned = true;
-        // 上限に届いていても出すかは ACCEL_FX_SHOW_AT_CAP で決める
+        // 基準に届いた後も出すかは ACCEL_FX_SHOW_AT_CAP で決める
         if (CONFIG.ACCEL_FX_SHOW_AT_CAP) {
           fish.accelFx = true;
-        } else if (fish.inputSpeed < CONFIG.INPUT_SPEED_MAX) {
+        } else if (fish.inputSpeed < CONFIG.INPUT_SPEED_REF) {
           fish.accelFx = true;
         }
         const stageBefore = inputStage();
-        // 1秒あたりの加速量は、上限と上限までの時間から求める。上限を変えても届くまでの時間は変わらない
-        fish.inputSpeed += CONFIG.INPUT_SPEED_MAX / CONFIG.INPUT_ACCEL_TIME * dt;
-        if (fish.inputSpeed > CONFIG.INPUT_SPEED_MAX) {
-          fish.inputSpeed = CONFIG.INPUT_SPEED_MAX;
-        }
+        fish.inputSpeed += CONFIG.INPUT_ACCEL_RATE * dt;
         // 段階が上がった瞬間だけ合図を出す。水流線が出ている時だけ（出ていないのに合図だけ出ると変なので）
         if (inputStage() > stageBefore && fish.accelFx && CONFIG.STAGE_UP_FX_ENABLED) {
           spawnStageUpBurst();
@@ -5184,7 +5198,8 @@ function createGame() {
 
   // 速さから目標の引き具合を決めて、なめらかに近づける。引く時は速く、戻る時はゆっくり
   function updateZoom(realDt) {
-    const t = clamp((totalSpeed() - CONFIG.CAMERA_ZOOM_SPEED_START) / (CONFIG.CAMERA_ZOOM_SPEED_FULL - CONFIG.CAMERA_ZOOM_SPEED_START), 0, 1);
+    // 下だけ止める（START より遅ければ1倍）。上は止めないので、速いほど引き続ける
+    const t = Math.max(0, (totalSpeed() - CONFIG.CAMERA_ZOOM_SPEED_START) / (CONFIG.CAMERA_ZOOM_SPEED_FULL - CONFIG.CAMERA_ZOOM_SPEED_START));
     const target = 1 + (CONFIG.CAMERA_ZOOM_MAX - 1) * t;
     let rate = CONFIG.CAMERA_ZOOM_IN_RATE;
     if (target > state.zoom) {
@@ -5207,15 +5222,11 @@ function createGame() {
     return CONFIG.INTRO_ENTER_TIME;
   }
 
-  // 演出の速さのうち BASE_SPEED を超えたぶん。入力ぶんとして持つ。
-  // 入力ぶんの上限は超えないようにする（入力加速の上限は入力では突破しない決まりのため）
+  // 演出の速さのうち BASE_SPEED を超えたぶん。入力ぶんとして持つ（入力ぶんに上限はないので、そのまま持ち越す）
   function introCarry() {
     let carry = CONFIG.INTRO_SPEED - CONFIG.BASE_SPEED;
     if (carry < 0) {
       carry = 0;
-    }
-    if (carry > CONFIG.INPUT_SPEED_MAX) {
-      carry = CONFIG.INPUT_SPEED_MAX;
     }
     return carry;
   }
