@@ -55,6 +55,7 @@
     --transition-bar: #000000; /* ステージのつなぎで上下から閉じる帯 */
     --bolt: #ff3030;        /* 倒した時の電撃の外側の光。赤。芯は白 */
     --flash: #ffffff;       /* ヒットフラッシュ */
+    --cursor-outline: #062448; /* マウスの位置の輪の外側のふち。明るい水の上でも輪が見えるように */
     --drift-charge: #ffc61a; /* ドリフトのチャージ中に吸い込まれる線。黄色 */
     --drift-spin: #ffe14a;  /* ドリフト解放の回転アタック（らせん・ドリルの帯）。通常の回転の白と見分ける黄色 */
     --wall: #123b48;        /* 背景の格子の線 */
@@ -210,6 +211,22 @@
   /* 遊んでいる間に右上で回転とドリフトを切り替えるボタン。HUD は触れない（pointer-events: none）ので、ここだけ触れるようにする */
   .hud-toggles { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; pointer-events: auto; }
   .hud-toggles .toggle { min-width: 0; font-size: 12px; padding: 2px 8px; }
+  /* マウスの位置に出す輪。大きさと線の太さはスクリプトから CURSOR_* で決める。左ボタンを押している間（held）は黄色にして中を塗る */
+  .cursor-ring {
+    position: fixed;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    border-radius: 50%;
+    box-sizing: border-box;
+    border-style: solid;
+    border-color: var(--flash);
+  }
+  .cursor-ring[hidden] { display: none; }
+  .cursor-ring .fill { position: absolute; inset: 0; border-radius: 50%; background: var(--drift-spin); opacity: 0; }
+  .cursor-ring.held { border-color: var(--drift-spin); }
+  /* 輪を出している間は、ゲーム画面の上ではふつうの矢印を隠す */
+  canvas.hide-cursor { cursor: none; }
   .title-start {
     margin: 8px 0 16px;
     text-align: center;
@@ -356,12 +373,14 @@
     <div class="hud-toggles">
       <button class="toggle" id="hudSpinToggle" type="button">回転 ON</button>
       <button class="toggle" id="hudDriftToggle" type="button">ドリフト ON</button>
+      <button class="toggle" id="hudCursorToggle" type="button">カーソル ON</button>
     </div>
   </div>
 </div>
 
 
 <div class="countdown" id="countdown" hidden></div>
+<div class="cursor-ring" id="cursorRing" hidden><div class="fill"></div></div>
 <div class="death-text" id="deathText" hidden></div>
 <div class="limit-callout" id="limitCallout" hidden></div>
 
@@ -403,6 +422,7 @@
         <div class="settings" id="settings">
           <div class="name">回転アタック</div><button class="toggle" id="setSpin" type="button">ON</button>
           <div class="name">ドリフト</div><button class="toggle" id="setDrift" type="button">ON</button>
+          <div class="name">カーソル</div><button class="toggle" id="setCursor" type="button">ON</button>
           <div class="name">制限時間</div><button class="toggle" id="setTimeLimit" type="button">ON</button>
           <div class="name">入力の上限</div><button class="toggle" id="setInputCap" type="button">OFF</button>
           <div class="name">上限の値</div>
@@ -487,6 +507,11 @@ const CONFIG = {
   // ===== タイトルと設定 =====
   GAME_TITLE: '鮮度限界突破',  // ゲームの名前。メニューの見出しとタブの名前に使う
   SETTING_TIME_LIMIT_DEFAULT: true, // 制限時間の最初の値。OFF なら時間切れで崩れない（ゲージは減り続けてランクも出る）
+  SETTING_CURSOR_DEFAULT: true, // マウスの位置に輪を出すかの最初の値
+  CURSOR_RADIUS: 18,            // px（画面の座標）。マウスの位置の輪の半径
+  CURSOR_LINE_WIDTH: 3,         // px。輪の線の太さ
+  CURSOR_OUTLINE: 2,            // px。輪の外側と内側の濃いふちの太さ
+  CURSOR_HELD_FILL_ALPHA: 0.35, // 左ボタンを押している間に、輪の中を塗る濃さ（0〜1）
   SETTING_INPUT_CAP_ON_DEFAULT: true, // 入力の上限を最初から ON にするか。ON なら入力ぶんが SETTING_INPUT_CAP_DEFAULT で止まる（v91 までと同じ手触り）
   SETTING_INPUT_CAP_DEFAULT: 700,   // px/秒。入力の上限の最初の値（上限を ON にした時に使う）
   SETTING_INPUT_CAP_MIN: 100,       // px/秒。上限の値の下限
@@ -1048,7 +1073,7 @@ const CONFIG = {
   WATER_CLAMP_PASSES: 3,        // 回。地図のステージで、縁にめり込んだ体を押し戻す計算を繰り返す回数（へこんだ角で2つの縁に挟まれた時用）
   SEAWEED_SIDE_PROBE: 6,        // px。地図のステージの縁で、どちらが水の側かを調べるために辺から離す距離                // px。ボスの部屋の入口がふさがった時に描く線の太さ
   COURSE_VIEW_MARGIN: 400,      // px。水路のいちばん外側から、カメラが映せる範囲の端までの余白。岩盤を見せる幅
-  ZAKO_GOAL_RADIUS: 90,         // px。目標物の大きさ（当たり半径）。どの向きから触れてもクリア
+  ZAKO_GOAL_RADIUS: 180,        // px。目標物の大きさ（当たり半径）。どの向きから触れてもクリア。v98 で 90 の2倍
   ZAKO_GOAL_PULSE: 0.1,         // 目標物が脈打つ大きさの割合。0.1なら半径が±10%ふくらむ。見た目だけで当たりは変わらない
   ZAKO_GOAL_PULSE_FREQ: 1,      // 回/秒。目標物が脈打つ速さ
 
@@ -1210,6 +1235,7 @@ const CONFIG = {
 const SETTINGS = {
   spin: true,                   // 回転アタック（右クリック・タッチの回転と、ドリフトを離した時の黄色い回転）
   drift: true,                  // ドリフト（左ボタン・スペース）
+  cursor: CONFIG.SETTING_CURSOR_DEFAULT, // マウスの位置に輪を出すか
   timeLimit: CONFIG.SETTING_TIME_LIMIT_DEFAULT, // 制限時間。ステージを始める時に読む
   inputCapOn: CONFIG.SETTING_INPUT_CAP_ON_DEFAULT, // 入力の上限を使うか
   inputCap: CONFIG.SETTING_INPUT_CAP_DEFAULT, // 入力の上限の値
@@ -8853,6 +8879,35 @@ function start() {
   function closeTitle(setName) {
     game.startFromTitle(setName);
     titleScreen.hidden = true;
+    updateCursorRing();
+  }
+
+  // ===== マウスの位置の輪 =====
+  // 見た目の大きさは CONFIG から入れる（CSS に数字を書かない）
+  const cursorRing = document.getElementById('cursorRing');
+  const cursorFill = cursorRing.firstElementChild;
+  const ringSize = CONFIG.CURSOR_RADIUS * 2;
+  cursorRing.style.width = ringSize + 'px';
+  cursorRing.style.height = ringSize + 'px';
+  cursorRing.style.borderWidth = CONFIG.CURSOR_LINE_WIDTH + 'px';
+  cursorRing.style.boxShadow = '0 0 0 ' + CONFIG.CURSOR_OUTLINE + 'px var(--cursor-outline), inset 0 0 0 ' + CONFIG.CURSOR_OUTLINE + 'px var(--cursor-outline)';
+  // 輪の場所と、出すかどうか。マウスの位置（mouseScreen）は下の pointermove で更新する
+  const cursorState = { x: 0, y: 0, known: false, held: false };
+  function updateCursorRing() {
+    // 出すのは、遊んでいる間（メニューではない）・設定が ON・マウスを一度でも動かした時だけ
+    const show = SETTINGS.cursor && cursorState.known && !game.state.title;
+    cursorRing.hidden = !show;
+    canvas.classList.toggle('hide-cursor', show);
+    if (!show) {
+      return;
+    }
+    cursorRing.style.transform = 'translate(' + (cursorState.x - CONFIG.CURSOR_RADIUS) + 'px, ' + (cursorState.y - CONFIG.CURSOR_RADIUS) + 'px)';
+    cursorRing.classList.toggle('held', cursorState.held);
+    let fill = 0;
+    if (cursorState.held) {
+      fill = CONFIG.CURSOR_HELD_FILL_ALPHA;
+    }
+    cursorFill.style.opacity = fill;
   }
 
   // ===== 設定の欄と、右上の回転・ドリフトのボタン =====
@@ -8867,6 +8922,8 @@ function start() {
   const capNumber = document.getElementById('capNumber');
   const hudSpinToggle = document.getElementById('hudSpinToggle');
   const hudDriftToggle = document.getElementById('hudDriftToggle');
+  const hudCursorToggle = document.getElementById('hudCursorToggle');
+  const setCursor = document.getElementById('setCursor');
   capRange.min = CONFIG.SETTING_INPUT_CAP_MIN;
   capRange.max = CONFIG.SETTING_INPUT_CAP_MAX;
   capRange.step = CONFIG.SETTING_INPUT_CAP_STEP;
@@ -8892,6 +8949,9 @@ function start() {
     showToggle(setInputCap, SETTINGS.inputCapOn, '');
     showToggle(hudSpinToggle, SETTINGS.spin, '回転 ');
     showToggle(hudDriftToggle, SETTINGS.drift, 'ドリフト ');
+    showToggle(setCursor, SETTINGS.cursor, '');
+    showToggle(hudCursorToggle, SETTINGS.cursor, 'カーソル ');
+    updateCursorRing();
     capRange.value = SETTINGS.inputCap;
     capNumber.value = SETTINGS.inputCap;
     // 上限が OFF の時は、値の欄を薄くして触れないようにする
@@ -8936,6 +8996,8 @@ function start() {
   onToggle(setInputCap, function () { SETTINGS.inputCapOn = !SETTINGS.inputCapOn; });
   onToggle(hudSpinToggle, function () { SETTINGS.spin = !SETTINGS.spin; });
   onToggle(hudDriftToggle, function () { SETTINGS.drift = !SETTINGS.drift; });
+  onToggle(setCursor, function () { SETTINGS.cursor = !SETTINGS.cursor; });
+  onToggle(hudCursorToggle, function () { SETTINGS.cursor = !SETTINGS.cursor; });
   onToggle(document.getElementById('capMinus'), function () { SETTINGS.inputCap = clamp(SETTINGS.inputCap - CONFIG.SETTING_INPUT_CAP_STEP, CONFIG.SETTING_INPUT_CAP_MIN, CONFIG.SETTING_INPUT_CAP_MAX); });
   onToggle(document.getElementById('capPlus'), function () { SETTINGS.inputCap = clamp(SETTINGS.inputCap + CONFIG.SETTING_INPUT_CAP_STEP, CONFIG.SETTING_INPUT_CAP_MIN, CONFIG.SETTING_INPUT_CAP_MAX); });
   capRange.addEventListener('input', function () {
@@ -9018,6 +9080,10 @@ function start() {
     mouseScreen.x = e.clientX;
     mouseScreen.y = e.clientY;
     mouseScreen.known = true;
+    cursorState.x = e.clientX;
+    cursorState.y = e.clientY;
+    cursorState.known = true;
+    updateCursorRing();
   });
   // マウスのボタンは mousedown / mouseup で受ける。
   // pointerdown / pointerup は、別のボタンを押している最中に押した2つ目のボタンでは発生しない
@@ -9027,10 +9093,19 @@ function start() {
     mouseScreen.y = e.clientY;
     mouseScreen.known = true;
     game.mouseDown(e.button);
+    // 左ボタン（ドリフトのボタン）を押している間は、輪の色を変える
+    if (e.button === CONFIG.MOUSE_DRIFT_BUTTON) {
+      cursorState.held = true;
+      updateCursorRing();
+    }
   });
   // 離したのは画面の外でも拾えるよう window で受ける
   window.addEventListener('mouseup', function (e) {
     game.mouseUp(e.button);
+    if (e.button === CONFIG.MOUSE_DRIFT_BUTTON) {
+      cursorState.held = false;
+      updateCursorRing();
+    }
   });
   // タッチやペンはボタンの区別がないので、回転アタックのボタンと同じに扱う。マウスは上の mousedown に任せる
   canvas.addEventListener('pointerdown', function (e) {
@@ -9047,12 +9122,18 @@ function start() {
   window.addEventListener('blur', function () {
     game.keyUp(CONFIG.DRIFT_KEY);
     game.mouseUp(CONFIG.MOUSE_DRIFT_BUTTON);
+    cursorState.held = false;
+    updateCursorRing();
   });
 
   function updateHud() {
     const s = game.state;
     // 全部クリアしたあとの R でメニューに戻った時に、説明画面をまた出す
     titleScreen.hidden = !s.title;
+    // メニューに戻った時は輪を消し、ふつうの矢印に戻す（その時の状態に合わせ直すだけなので毎フレームでも軽い）
+    if (cursorRing.hidden !== !(SETTINGS.cursor && cursorState.known && !s.title)) {
+      updateCursorRing();
+    }
     hudTime.textContent = s.gameTime.toFixed(2);
     // 残り時間。制限のないステージ（ボス戦）では隠す。前触れが始まったら赤く点滅
     const hasLimit = s.timeLeft !== null;
