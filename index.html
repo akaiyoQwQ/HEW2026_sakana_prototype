@@ -131,7 +131,7 @@
   }
   .title-screen[hidden] { display: none; }
   .title-panel {
-    max-width: 560px;
+    max-width: 1000px;
     width: 100%;
     max-height: 100%;
     overflow-y: auto;
@@ -156,6 +156,18 @@
     letter-spacing: 0.08em;
   }
   .title-panel p { margin: 0; }
+  /* 2列に並べて、画面の高さ720でもスクロールせずに全部入るようにする。左はタイトル・説明・ステージ、右は設定と操作 */
+  .title-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  .title-col { min-width: 0; }
+  .title-col .settings { margin-top: 0; }
+  .title-col h2:first-of-type { margin-top: 16px; }
+  /* 右の列の操作の説明は少し小さく詰める（高さ720に収めるため） */
+  .title-col ul { font-size: 14px; line-height: 1.55; }
+  /* 画面の幅が狭い時（スマホの縦向きなど）は、今までどおり縦1列。横に並べると文字がつぶれて読めないため */
+  @media (max-width: 800px) {
+    .title-cols { grid-template-columns: 1fr; gap: 0; }
+    .title-col .settings { margin-top: 14px; }
+  }
   .title-panel ul { margin: 0; padding-left: 1.2em; }
   .title-panel li { margin-bottom: 4px; }
   .title-panel .key { color: var(--goal); }
@@ -374,36 +386,44 @@
 <!-- 説明画面。文章を直す時はここを書き換える -->
 <div class="title-screen" id="titleScreen">
   <div class="title-panel">
-    <h1 id="titleName">鮮度限界突破</h1>
-    <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全10ステージ。STAGE 4・6・8・10 は奥の部屋で待つ大物を倒せばクリア、それ以外は奥にある光る目標にたどり着けばクリア。敵を倒したり岩を壊したりすると時間が延びる。制限時間を過ぎると水路が崩れてやり直し。タイムが短いほどいい記録。</p>
-    <div class="title-menu">
-      <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全10）</button>
-      <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全8）</button>
-      <button class="title-choice" id="choiceBoss" type="button"><span class="key">3</span>　ボスだけ（全5）</button>
-    </div>
-    <div class="settings" id="settings">
-      <div class="name">回転アタック</div><button class="toggle" id="setSpin" type="button">ON</button>
-      <div class="name">ドリフト</div><button class="toggle" id="setDrift" type="button">ON</button>
-      <div class="name">制限時間</div><button class="toggle" id="setTimeLimit" type="button">ON</button>
-      <div class="name">入力の上限</div><button class="toggle" id="setInputCap" type="button">OFF</button>
-      <div class="name">上限の値</div>
-      <div class="cap-row" id="capRow">
-        <button type="button" id="capMinus">−</button>
-        <input type="range" id="capRange">
-        <button type="button" id="capPlus">＋</button>
-        <input type="number" id="capNumber">
+    <div class="title-cols">
+      <!-- 左の列：タイトル・説明・ステージの選択 -->
+      <div class="title-col">
+        <h1 id="titleName">鮮度限界突破</h1>
+        <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全10ステージ。STAGE 4・6・8・10 は奥の部屋で待つ大物を倒せばクリア、それ以外は奥にある光る目標にたどり着けばクリア。敵を倒したり岩を壊したりすると時間が延びる。制限時間を過ぎると水路が崩れてやり直し。タイムが短いほどいい記録。</p>
+        <div class="title-menu">
+          <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全10）</button>
+          <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全8）</button>
+          <button class="title-choice" id="choiceBoss" type="button"><span class="key">3</span>　ボスだけ（全5）</button>
+        </div>
+        <div class="title-start" id="titleStart">クリックか 1 / 2 / 3 キーで選んでスタート</div>
+      </div>
+      <!-- 右の列：設定と操作の説明 -->
+      <div class="title-col">
+        <div class="settings" id="settings">
+          <div class="name">回転アタック</div><button class="toggle" id="setSpin" type="button">ON</button>
+          <div class="name">ドリフト</div><button class="toggle" id="setDrift" type="button">ON</button>
+          <div class="name">制限時間</div><button class="toggle" id="setTimeLimit" type="button">ON</button>
+          <div class="name">入力の上限</div><button class="toggle" id="setInputCap" type="button">OFF</button>
+          <div class="name">上限の値</div>
+          <div class="cap-row" id="capRow">
+            <button type="button" id="capMinus">−</button>
+            <input type="range" id="capRange">
+            <button type="button" id="capPlus">＋</button>
+            <input type="number" id="capNumber">
+          </div>
+        </div>
+        <h2>操作</h2>
+        <ul>
+          <li><span class="key">マウスカーソル</span>の方へ、魚はいつも少しずつ向きを変える（<span class="key">矢印キー / WASD</span> を押している間はそちらが優先）</li>
+          <li>向ききったまま泳ぎ続ける：<span class="key">加速</span>（大きく曲がると溜まらない）</li>
+          <li><span class="key">マウス右クリック</span>：<span class="key">回転アタック</span>（どの向きから当たっても敵を倒せて、倒すたびにさらに加速）</li>
+          <li><span class="key">マウス左ボタン</span>または<span class="key">スペース</span>を押している間：<span class="key">ドリフト</span>（押した時の向きのまま減速しながら滑り、その間は頭の向きだけを変えられる。チャージがたまる。離すと頭の向きへ進み、チャージ完了なら一気に加速して黄色い回転アタックが出る）</li>
+          <li>正面からぶつかれば、ふつうの体当たりでも倒せる。横や後ろから触れると被弾して減速</li>
+          <li><span class="key">R</span>：やり直し</li>
+        </ul>
       </div>
     </div>
-    <div class="title-start" id="titleStart">クリックか 1 / 2 / 3 キーで選んでスタート</div>
-    <h2>操作</h2>
-    <ul>
-      <li><span class="key">マウスカーソル</span>の方へ、魚はいつも少しずつ向きを変える（<span class="key">矢印キー / WASD</span> を押している間はそちらが優先）</li>
-      <li>向ききったまま泳ぎ続ける：<span class="key">加速</span>（大きく曲がると溜まらない）</li>
-      <li><span class="key">マウス右クリック</span>：<span class="key">回転アタック</span>（どの向きから当たっても敵を倒せて、倒すたびにさらに加速）</li>
-      <li><span class="key">マウス左ボタン</span>または<span class="key">スペース</span>を押している間：<span class="key">ドリフト</span>（押した時の向きのまま減速しながら滑り、その間は頭の向きだけを変えられる。チャージがたまる。離すと頭の向きへ進み、チャージ完了なら一気に加速して黄色い回転アタックが出る）</li>
-      <li>正面からぶつかれば、ふつうの体当たりでも倒せる。横や後ろから触れると被弾して減速</li>
-      <li><span class="key">R</span>：やり直し</li>
-    </ul>
   </div>
 </div>
 
