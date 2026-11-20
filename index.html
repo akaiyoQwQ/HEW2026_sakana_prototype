@@ -68,6 +68,8 @@
     --bag: #f4f4f4;         /* ゴミのビニール袋 */
     --current: #c9efff;     /* 海流の帯と線 */
     --vent: #ff8a3d;        /* 火山口の噴き上げと泡 */
+    --blast-heat: #ffb347;  /* 噴射口の熱の柱（噴いている間） */
+    --blast-warn: #ff3b2f;  /* 噴射口の口が噴く直前に赤く光る色 */
     --rock-base: #3b3b40;   /* ステージの外の岩。地の色 */
     --rock-light: #56565c;  /* 岩。石の明るい縁 */
     --spike-tip: #e8442e;   /* 迫り岩のトゲの先。触ると痛いと一目で分かる赤 */
@@ -412,7 +414,7 @@
         <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全10ステージ。STAGE 4・6・8・10 は奥の部屋で待つ大物を倒せばクリア、それ以外は奥にある光る目標にたどり着けばクリア。敵を倒したり岩を壊したりすると時間が延びる。制限時間を過ぎると水路が崩れてやり直し。タイムが短いほどいい記録。</p>
         <div class="title-menu">
           <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全10）</button>
-          <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全8）</button>
+          <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全9）</button>
           <button class="title-choice" id="choiceBoss" type="button"><span class="key">3</span>　ボスだけ（全5）</button>
         </div>
         <div class="title-start" id="titleStart">クリックか 1 / 2 / 3 キーで選んでスタート</div>
@@ -1069,6 +1071,23 @@ const CONFIG = {
   VENT_BUBBLES: 8,              // 個。泡の数
   VENT_BUBBLE_SPEED: 500,       // px/秒。泡がのぼる速さ
   VENT_BUBBLE_RADIUS: 12,       // px。泡の大きさ
+  // 噴射口（v101）：床・天井・壁に付いた口から、決まった間隔で熱を一気に噴き、当たった魚を噴く向きへ吹き飛ばす。
+  // 1周期 = 予告（口が赤く光って震える）→ 噴射（熱の柱が出る。この間に触れると吹き飛ぶ）→ 休み
+  BLAST_INTERVAL: 0.8,          // 秒。噴射の周期
+  BLAST_WARN_TIME: 0.3,         // 秒。噴く前に口が赤く光って震える時間（よけるための予告）
+  BLAST_ACTIVE_TIME: 0.25,      // 秒。熱の柱が出ていて、触れると吹き飛ばされる時間
+  BLAST_PHASE_STEP: 0.2,        // 秒。噴射口ごとのずれ1段ぶん。ステージに置く時に段（step）を決め、段 × これだけ遅らせて噴く
+  BLAST_LENGTH: 700,            // px。熱の柱の長さ（口から噴く向きへ）
+  BLAST_WIDTH: 180,             // px。熱の柱の太さ
+  BLAST_MOUTH_SIZE: 120,        // px。口の幅
+  BLAST_MOUTH_DEPTH: 60,        // px。口の土台の厚み（半分は壁にめり込ませる）
+  BLAST_KNOCK: 1800,            // px/秒。吹き飛ばされた瞬間の速さ
+  BLAST_KNOCK_DECAY: 2,         // 1/秒。吹き飛ばされた勢いが弱まる速さ。2 で合計およそ BLAST_KNOCK ÷ 2 = 900px 運ばれる（クラゲの JELLY_KNOCK_DECAY とは別）
+  BLAST_SHAKE: 8,               // px。予告中に口が震える幅
+  BLAST_SHAKE_FREQ: 40,         // 回/秒（ラジアン）。予告中に口が震える速さ
+  BLAST_WARN_LINE: 10,          // px。予告中に、これから噴く範囲の縁を描く線の太さ
+  BLAST_MOUTH_EDGE: 4,          // px。口の土台の縁取りの太さ
+  BLAST_CORE_RATE: 0.45,        // 熱の柱の明るい芯の太さ（柱の太さに対する割合）
   MAP_SCALE: 17,                // px。ステージ地図の絵の1あたりのゲームの長さ。全ステージ共通。②の道幅（絵の上で約22）を、それまでの道幅 380px に合わせた値
   GATE_WIDTH: 8,
   WATER_CLAMP_PASSES: 3,        // 回。地図のステージで、縁にめり込んだ体を押し戻す計算を繰り返す回数（へこんだ角で2つの縁に挟まれた時用）
@@ -1730,7 +1749,7 @@ const STAGES_NORMAL = [
   mapStage(MAP_10, { label: 'STAGE 10  Last boss', type: 'boss', timeLimit: null, bossKind: 'deep' }),
 ];
 
-// ===== 新ギミックのステージ（v82 から。メニューで「新ギミックのステージ」を選んだ時の8ステージ） =====
+// ===== 新ギミックのステージ（v82 から。メニューで「新ギミックのステージ」を選んだ時の9ステージ。G9 は v101） =====
 // ギミック1つにつき1ステージ。道の形は仮置き（ギミックの手触りを確かめるため）。座標は x が右、y が下。
 // gimmicks の中身：crabs カブトガニ（床に伏せる位置） / stones 垂れ下がる・突き出る岩（根元の位置と、先が向く角度） /
 //   jellies クラゲ / bottles ビン / bags ビニール袋 / currents 海流（帯の始まり・終わり・幅） / vents 火山口（床の穴の位置）
@@ -1836,9 +1855,35 @@ const STAGE_G8 = courseStage({
   botPath: [vec2(0, 200), vec2(5200, 200), vec2(5200, 0)],
 });
 
-const STAGES_GIMMICK = [STAGE_G1, STAGE_G2, STAGE_G3, STAGE_G4, STAGE_G5, STAGE_G6, STAGE_G7, STAGE_G8];
+// G9：噴射口（v101）。右 → 上 → 右のクランク。0.8秒ごとに熱を噴く口が床・天井・壁に付いている。
+// 右向き（→ ↗ ↘）の口は、わざと巻き込まれると前へ運ばれる近道。それ以外（↑ ← ↖）は邪魔をする口。
+// ゴールの手前には床から凸の段差があり、その上面の ↖ の口が乗り越えようとした魚を手前へ押し戻す（出戻りさせる場所）。
+// dirDeg は噴く向き（0 右 / 90 下 / -90 上 / 180 左。斜めは ±45、±135）。step は噴くタイミングのずれの段（× BLAST_PHASE_STEP 秒）
+const G9 = [vec2(0, 0), vec2(4000, 0), vec2(4000, -2000), vec2(8000, -2000)];
+const G9_STEP = { x: 5800, top: -2000, w: 600, h: 500 }; // 凸の段差。左端 x、上面 top、幅 w、高さ h（床 y=-1500 から上へ）
+const STAGE_G9 = courseStage({
+  label: 'G9  噴射口', start: vec2(0, 0),
+  corridors: [{ points: G9, width: 1000 }],
+  goal: vec2(7600, -2000), timeLimit: 19, /* 秒。ボットのタイム（12.5秒。段差の口で1回押し戻される）の約1.5倍 */
+  enemies: [vec2(2000, 200), vec2(4000, -1700), vec2(5200, -1700)],
+  rocks: [{ points: [
+    vec2(G9_STEP.x, G9_STEP.top), vec2(G9_STEP.x + G9_STEP.w, G9_STEP.top),
+    vec2(G9_STEP.x + G9_STEP.w, G9_STEP.top + G9_STEP.h), vec2(G9_STEP.x, G9_STEP.top + G9_STEP.h),
+  ], edges: null }],
+  gimmicks: { blasts: [
+    { pos: vec2(1200, 500), dirDeg: -90, step: 1 },          // 床。上へ（邪魔）
+    { pos: vec2(2600, 500), dirDeg: -45, step: 2 },          // 床。右上へ（加速）
+    { pos: vec2(4500, -1000), dirDeg: 180, step: 3 },        // 縦穴の右の壁。左へ（邪魔）
+    { pos: vec2(3500, -2000), dirDeg: 0, step: 0 },          // 縦穴の上の左の壁。右へ（加速）
+    { pos: vec2(4300, -2500), dirDeg: 45, step: 0 },         // 天井。右下へ（加速）。押された先が段差の壁に刺さらないよう、段差から 1500 手前
+    { pos: vec2(6200, -2000), dirDeg: -135, step: 1 },       // 凸の段差の上面。左上へ（押し戻し）
+  ] },
+  botPath: [vec2(0, 0), vec2(4000, 0), vec2(4000, -2000), vec2(5600, -2250), vec2(6400, -2250), vec2(6800, -2000), vec2(7600, -2000)],
+});
 
-// メニューで選べるステージの組。'normal' はいつものステージ（地図の10ステージ）、'gimmick' は新ギミックの8ステージ、'boss' はボス戦だけの4ステージ
+const STAGES_GIMMICK = [STAGE_G1, STAGE_G2, STAGE_G3, STAGE_G4, STAGE_G5, STAGE_G6, STAGE_G7, STAGE_G8, STAGE_G9];
+
+// メニューで選べるステージの組。'normal' はいつものステージ（地図の10ステージ）、'gimmick' は新ギミックの9ステージ、'boss' はボス戦だけの4ステージ
 // ボスだけを続けて確かめる組。いつものステージのボス戦（4つ）をそのまま使う（同じステージなので、片方を直せば両方に入る）
 // カニの部屋。地図にまだないので、床の平らな横長の部屋を作る（ボスだけの組にだけ入れる）。
 // 左の通路の口から入り、部屋の床（下の辺）の上をカニが左右に歩く。点は地図の単位（MAP_SCALE で割った値）で作り、mapStage にそのまま渡す
@@ -2150,6 +2195,7 @@ function createGame() {
       shake: { lastDir: 0, travel: 0, turns: [] }, // 袋を振りほどくマウスの切り返しの記録
       knock: vec2(0, 0),       // クラゲに跳ね返された勢い（px/秒）。だんだん弱まる
       ventVel: 0,              // 火山口に押し上げられている速さ（px/秒、上向き）
+      blastVel: vec2(0, 0),    // 噴射口に吹き飛ばされた勢い（px/秒）。BLAST_KNOCK_DECAY でだんだん弱まる
       inCurrent: false,        // 海流の帯の中にいるか
       currentCarry: 0,         // 海流から出た後に持ち越している速さ（海流ぶん）。CURRENT_EXIT_DECAY_TIME で0へ
       angle: startDeg * DEG, // 魚の向き（頭の向き）。正面の判定と見た目に使う
@@ -2302,7 +2348,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0, bossInsideIgnored: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0, bossInsideIgnored: 0, blastHits: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -3219,6 +3265,13 @@ function createGame() {
       }),
       currents: list('currents'),
       vents: list('vents'),
+      // 噴射口。dir は噴く向き（長さ1）。mode は今の周期の中の段階（'warn' 予告 / 'active' 噴射 / 'rest' 休み）、
+      // k はその段階の進み具合（0〜1）。見た目はこの2つだけを読む。hitBurst は最後に吹き飛ばした噴射の番号（1回の噴射で1回だけ当てる）
+      blasts: list('blasts').map(function (b) {
+        const a = b.dirDeg * DEG;
+        return { pos: b.pos, dir: vec2(Math.cos(a), Math.sin(a)), angle: a, delay: b.step * CONFIG.BLAST_PHASE_STEP, mode: 'rest', k: 0, hitBurst: -1 };
+      }),
+      blastClock: 0,           // 秒。噴射口の周期を数える時計。ステージの頭から進める
       // ひびの入った壁。当たりは岩と同じ多角形（長方形）で持つ。ひびの線は置いた時に一度だけ作る
       walls: list('walls').map(function (p, i) {
         return { pos: vec2(p.x, p.y), alive: true, rock: wallRect(p), cracks: wallCracks(p, i) };
@@ -3379,6 +3432,50 @@ function createGame() {
     return Math.abs(p.x - v.x) <= CONFIG.VENT_SIZE.x / 2 && p.y <= v.y && p.y >= v.y - CONFIG.VENT_SIZE.y;
   }
 
+  // 噴射口1つの段階を時計から決め、噴射中なら魚との当たりを見る。
+  // 段階は「時計 − この噴射口の遅れ」を周期で割った余りで決まる（予告 → 噴射 → 休み）。割った商が噴射の番号
+  function updateBlast(b, clock, fish) {
+    const local = clock - b.delay;
+    b.mode = 'rest';
+    b.k = 0;
+    // 遅れの分がまだ経っていない間は、最初の予告も始めない
+    if (local < 0) {
+      return;
+    }
+    const burst = Math.floor(local / CONFIG.BLAST_INTERVAL);
+    const inCycle = local - burst * CONFIG.BLAST_INTERVAL;
+    if (inCycle < CONFIG.BLAST_WARN_TIME) {
+      b.mode = 'warn';
+      b.k = inCycle / CONFIG.BLAST_WARN_TIME;
+      return;
+    }
+    const activeT = inCycle - CONFIG.BLAST_WARN_TIME;
+    if (activeT >= CONFIG.BLAST_ACTIVE_TIME) {
+      return;
+    }
+    b.mode = 'active';
+    b.k = activeT / CONFIG.BLAST_ACTIVE_TIME;
+    if (b.hitBurst === burst) {
+      return;
+    }
+    if (insideBlast(fish.pos, b, CONFIG.FISH_RADIUS)) {
+      b.hitBurst = burst;
+      // 足さずに置き換える。続けて別の噴射口に当たった時も、最後に当たった向きへ素直に飛ぶように
+      fish.blastVel = vec2(b.dir.x * CONFIG.BLAST_KNOCK, b.dir.y * CONFIG.BLAST_KNOCK);
+      state.stats.blastHits++;
+      startSpeedBurst();
+    }
+  }
+
+  // 半径 r の円が噴射口の熱の柱（口から噴く向きへ長さ BLAST_LENGTH、太さ BLAST_WIDTH の長方形）に触れているか
+  function insideBlast(p, b, r) {
+    const dx = p.x - b.pos.x;
+    const dy = p.y - b.pos.y;
+    const along = dx * b.dir.x + dy * b.dir.y;
+    const across = Math.abs(-dx * b.dir.y + dy * b.dir.x);
+    return along >= -r && along <= CONFIG.BLAST_LENGTH + r && across <= CONFIG.BLAST_WIDTH / 2 + r;
+  }
+
   // ギミックを1フレーム進める。魚を動かした後に呼ぶ
   function updateGimmicks(dt) {
     const fish = state.fish;
@@ -3422,6 +3519,17 @@ function createGame() {
       fish.ventVel = Math.max(fish.ventVel - CONFIG.VENT_DECAY * dt, 0);
     }
     fish.pos.y -= fish.ventVel * dt;
+
+    // 噴射口：周期の段階を進め、噴射中の熱の柱に触れたら噴く向きへ吹き飛ばす（回転中でも防げない。敵には効かない）
+    g.blastClock += dt;
+    for (const b of g.blasts) {
+      updateBlast(b, g.blastClock, fish);
+    }
+    fish.pos.x += fish.blastVel.x * dt;
+    fish.pos.y += fish.blastVel.y * dt;
+    const blastKeep = Math.exp(-CONFIG.BLAST_KNOCK_DECAY * dt);
+    fish.blastVel.x *= blastKeep;
+    fish.blastVel.y *= blastKeep;
 
     // クラゲに跳ね返された勢い。だんだん弱まる
     fish.pos.x += fish.knock.x * dt;
@@ -6153,6 +6261,8 @@ function createRenderer(game, canvas) {
     bag: token('--bag'),
     current: token('--current'),
     vent: token('--vent'),
+    blastHeat: token('--blast-heat'),
+    blastWarn: token('--blast-warn'),
     rockLight: token('--rock-light'),
     rockDark: token('--rock-dark'),
     rockCrack: token('--rock-crack'),
@@ -8467,7 +8577,7 @@ function createRenderer(game, canvas) {
       drawGoal(stage, state.realTime);
     }
     drawBreakables(state);
-    drawGimmicks(state);
+    drawGimmicks(state, stage, left);
     for (const enemy of state.enemies) {
       drawEnemy(enemy);
     }
@@ -8544,7 +8654,61 @@ function createRenderer(game, canvas) {
   }
 
   // ---------- 新ギミックの見た目（v82。絵をもらうまでの仮の図形） ----------
-  function drawGimmicks(state) {
+  // 噴射口の熱の柱。口の付け根 b.pos を原点に、噴く向きを右（+x）に回した座標で描く。
+  // ドットの層は色を決まった色に寄せるので、半透明は使わず不透明の色だけで描く（半透明だと灰色に化けるため）。
+  // 予告中は、これから噴く範囲の縁を口から先へ伸ばしていく。噴射中は柱を塗り、明るい芯が口のほうへ縮んでいく
+  function drawBlastHeat(b) {
+    if (b.mode === 'rest') {
+      return;
+    }
+    ctx.save();
+    ctx.translate(b.pos.x, b.pos.y);
+    ctx.rotate(b.angle);
+    const half = CONFIG.BLAST_WIDTH / 2;
+    if (b.mode === 'warn') {
+      ctx.strokeStyle = colors.blastWarn;
+      ctx.lineWidth = CONFIG.BLAST_WARN_LINE;
+      ctx.strokeRect(0, -half, CONFIG.BLAST_LENGTH * b.k, CONFIG.BLAST_WIDTH);
+    }
+    if (b.mode === 'active') {
+      ctx.fillStyle = colors.blastHeat;
+      ctx.fillRect(0, -half, CONFIG.BLAST_LENGTH, CONFIG.BLAST_WIDTH);
+      const core = half * CONFIG.BLAST_CORE_RATE;
+      ctx.fillStyle = colors.vent;
+      ctx.fillRect(0, -core, CONFIG.BLAST_LENGTH * (1 - b.k), core * 2);
+    }
+    ctx.restore();
+  }
+
+  // 噴射口の口の土台と穴。予告中だけ横に震わせ、穴を赤く光らせる。噴射中の穴は熱の色
+  function drawBlastMouth(b, t) {
+    ctx.save();
+    ctx.translate(b.pos.x, b.pos.y);
+    ctx.rotate(b.angle);
+    let shake = 0;
+    if (b.mode === 'warn') {
+      shake = Math.sin(t * CONFIG.BLAST_SHAKE_FREQ) * CONFIG.BLAST_SHAKE;
+    }
+    const depth = CONFIG.BLAST_MOUTH_DEPTH;
+    const mouthHalf = CONFIG.BLAST_MOUTH_SIZE / 2;
+    ctx.fillStyle = colors.rockBase;
+    ctx.strokeStyle = colors.rockDark;
+    ctx.lineWidth = CONFIG.BLAST_MOUTH_EDGE;
+    ctx.fillRect(-depth / 2, -mouthHalf + shake, depth, CONFIG.BLAST_MOUTH_SIZE);
+    ctx.strokeRect(-depth / 2, -mouthHalf + shake, depth, CONFIG.BLAST_MOUTH_SIZE);
+    let holeColor = colors.rockDark;
+    if (b.mode === 'warn') {
+      holeColor = colors.blastWarn;
+    }
+    if (b.mode === 'active') {
+      holeColor = colors.blastHeat;
+    }
+    ctx.fillStyle = holeColor;
+    ctx.fillRect(0, -mouthHalf / 2 + shake, depth / 2, mouthHalf);
+    ctx.restore();
+  }
+
+  function drawGimmicks(state, stage, left) {
     const g = state.gim;
     const t = state.realTime;
     // 海流：薄い帯と、流れの向きへ動く短い線
@@ -8597,6 +8761,20 @@ function createRenderer(game, canvas) {
         ctx.arc(bx, by, CONFIG.VENT_BUBBLE_RADIUS, 0, TAU);
         ctx.fill();
       }
+    }
+    // 噴射口：予告中は口が赤く光って震え、噴く範囲がうっすら見える。噴射中は熱の柱が出て、終わりに向けて薄くなる
+    // 熱の柱は泳げる場所の中だけに描く（斜めの柱の角が壁の中にはみ出して見えないように）
+    if (g.blasts.length > 0) {
+      ctx.save();
+      stageShapePath(stage, left);
+      ctx.clip();
+      for (const b of g.blasts) {
+        drawBlastHeat(b);
+      }
+      ctx.restore();
+    }
+    for (const b of g.blasts) {
+      drawBlastMouth(b, t);
     }
     // 垂れ下がる・突き出る岩
     for (const s of g.stones) {
