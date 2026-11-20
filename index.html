@@ -737,6 +737,8 @@ const CONFIG = {
   SHARK_TURN_RATE_DEG: 180,     // 度/秒。うろうろと溜めの間に魚の方へ顔を向ける速さ
 
   // --- サメ以外のボス共通 ---
+  BOSS_HIT_BONUS: 20,           // ボスにダメージを入れた時（体当たり）に積む撃破ぶん。雑魚を倒した時と同じく速さに足す（全ボス・カニのはさみも）
+  BOSS_SPIN_HIT_BONUS: 50,      // ボスにダメージを入れた時（回転）に積む回転ぶん
   BOSS_BODY_DAMAGE: 1,          // 本体に当てた時のダメージ（フグ・タコ・深海魚・カニ）。向きは問わない
   BOSS_BODY_SPIN_MULT: 2,       // 倍。回転中に本体へ当てた時のダメージ倍率
   BOSS_TURN_RATE_DEG: 180,      // 度/秒。うろうろしている間に魚の方へ顔を向ける速さ
@@ -2038,7 +2040,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSlams: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSlams: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -2979,6 +2981,17 @@ function createGame() {
   }
 
   // 加速が入った時に、画面全体の風切りの線を SPEED_BURST_TIME 秒流す
+  // ボスにダメージを入れた時の加速。雑魚を倒した時と同じ addBonus で積むので、保ち方・減り方・風切りの演出も同じになる。
+  // ボスの攻撃に当たって弾かれた時は呼ばない
+  function addBossHitBonus(kind) {
+    if (kind === 'spin') {
+      addBonus('spinBonus', CONFIG.BOSS_SPIN_HIT_BONUS);
+    } else {
+      addBonus('killBonus', CONFIG.BOSS_HIT_BONUS);
+    }
+    state.stats.bossHitBonuses++;
+  }
+
   function startSpeedBurst() {
     state.speedBurst = CONFIG.SPEED_BURST_TIME;
   }
@@ -4105,7 +4118,7 @@ function createGame() {
     triggerHitstop(kind);
     spawnHitFx(contact, kind, CONFIG.HIT_FX_SCALE_BOSS_HIT);
     onDriftDashHit();
-    startSpeedBurst();
+    addBossHitBonus(kind);
     // 顔に正面から当てたら、魚は少し跳ね返される。サメから魚への向きへ押す
     if (front) {
       const away = Math.atan2(fish.pos.y - boss.pos.y, fish.pos.x - boss.pos.x);
@@ -4154,7 +4167,7 @@ function createGame() {
     triggerHitstop(kind);
     spawnHitFx(contact, kind, CONFIG.HIT_FX_SCALE_BOSS_HIT);
     onDriftDashHit();
-    startSpeedBurst();
+    addBossHitBonus(kind);
     state.fish.bossHitCooldown = CONFIG.BOSS_HIT_COOLDOWN;
     return damage;
   }
@@ -4288,14 +4301,14 @@ function createGame() {
       triggerHitstop('spin');
       spawnHitFx(contact, 'spin', CONFIG.HIT_FX_SCALE_BOSS_HIT);
       onDriftDashHit();
-      startSpeedBurst();
+      addBossHitBonus('spin');
     } else if (billHit || isFrontalHit(boss.pos)) {
       boss.hp -= CONFIG.BOSS_DAMAGE_NORMAL + speedDamage;
       boss.flash = CONFIG.FLASH_DURATION;
       triggerHitstop('normal');
       spawnHitFx(contact, 'normal', CONFIG.HIT_FX_SCALE_BOSS_HIT);
       onDriftDashHit();
-      startSpeedBurst();
+      addBossHitBonus('normal');
     } else {
       if (fish.invincible <= 0) {
         onDamaged(boss.pos);
