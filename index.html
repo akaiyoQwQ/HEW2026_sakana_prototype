@@ -737,6 +737,16 @@ const CONFIG = {
   SHARK_TURN_RATE_DEG: 180,     // 度/秒。うろうろと溜めの間に魚の方へ顔を向ける速さ
 
   // --- サメ以外のボス共通 ---
+  // --- ダメージ表示。敵やボスに当てた所に数字を出し、浮かせながら消す ---
+  DAMAGE_NUMBER_LIFETIME: 0.8,  // 秒（実時間）。出てから消えるまで。ヒットストップ中も止めない
+  DAMAGE_NUMBER_RISE: 80,       // px（画面の座標）。消えるまでに浮き上がる高さ
+  DAMAGE_NUMBER_SIZE: 44,       // px（画面の座標）。文字の大きさ。カメラが引いても変えない
+  DAMAGE_NUMBER_SPIN_SCALE: 1.4,// 倍。回転で当てた時の文字の大きさ
+  DAMAGE_NUMBER_SPREAD: 30,     // px（画面の座標）。続けて出た数字が重ならないよう、0 → 右 → 左 の順に横へずらす幅
+  DAMAGE_NUMBER_OUTLINE: 6,     // px。数字のふちどりの太さ。明るい水の上でも読めるように
+  ZAKO_DAMAGE_NORMAL: 1,        // 雑魚を体当たりで倒した時に出す数字（表示だけ。雑魚は今までどおり1回で倒れる）
+  ZAKO_DAMAGE_SPIN: 2,          // 雑魚を回転で倒した時に出す数字（ボスに当てた時と同じ数え方）
+
   BOSS_HIT_BONUS: 20,           // ボスにダメージを入れた時（体当たり）に積む撃破ぶん。雑魚を倒した時と同じく速さに足す（全ボス・カニのはさみも）
   BOSS_SPIN_HIT_BONUS: 50,      // ボスにダメージを入れた時（回転）に積む回転ぶん
   BOSS_BODY_DAMAGE: 1,          // 本体に当てた時のダメージ（フグ・タコ・深海魚・カニ）。向きは問わない
@@ -1931,6 +1941,8 @@ function createGame() {
     state.trail = [];          // 風切り用。回転中に通った位置の記録。{ pos, angle, roll, t: 実時間 }
     state.particles = [];      // 泡・水流線・輪・火花をまとめて入れる。種類は type で分ける
     state.killFx = [];         // 雑魚を倒した時の絵のエフェクト。{ pos, angle, kind, age }。ヒットストップ中も進めるので particles とは別に持つ
+    state.damageNumbers = [];  // ダメージ表示。{ pos（ワールド座標）, value, kind, age（実時間）, dx（画面の座標で横にずらす量） }
+    state.damageNumberCount = 0; // これまでに出した数。横にずらす順番に使う
     state.bubbleDist = 0;      // 前の泡を出してから泳いだ距離
     state.accelFxTimer = 0;    // 次の水流線を出すまでの残り時間
     state.sparkleTimer = 0;    // 次のキラキラを出すまでの残り時間
@@ -2040,7 +2052,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSlams: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSlams: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, damageNumbers: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -2235,6 +2247,31 @@ function createGame() {
     }
     state.killFx.push({ pos: vec2(pos.x, pos.y), angle: angle, kind: kind, age: 0 });
     state.stats.hitFx.push(kind);
+  }
+
+  // ダメージの数字を出す。kind は 'normal'（白）か 'spin'（黄色で大きめ）。
+  // 続けて出ると重なるので、出した順に 0 → 右 → 左 とずらす
+  function spawnDamageNumber(pos, value, kind) {
+    const slot = state.damageNumberCount % 3;
+    let dx = 0;
+    if (slot === 1) {
+      dx = CONFIG.DAMAGE_NUMBER_SPREAD;
+    } else if (slot === 2) {
+      dx = -CONFIG.DAMAGE_NUMBER_SPREAD;
+    }
+    state.damageNumberCount++;
+    state.damageNumbers.push({ pos: vec2(pos.x, pos.y), value: value, kind: kind, age: 0, dx: dx });
+    state.stats.damageNumbers++;
+  }
+
+  // ダメージの数字は実時間で年を取らせる。ヒットストップ中も浮いていく
+  function updateDamageNumbers(realDt) {
+    for (const n of state.damageNumbers) {
+      n.age += realDt;
+    }
+    state.damageNumbers = state.damageNumbers.filter(function (n) {
+      return n.age < CONFIG.DAMAGE_NUMBER_LIFETIME;
+    });
   }
 
   function killFxDuration(kind) {
@@ -3933,12 +3970,14 @@ function createGame() {
       triggerHitstop('spin');
       // 雑魚を倒した時は絵のエフェクトだけを出す（図形のしぶき・電撃・輪・火花は出さない）
       spawnKillFx(enemy.pos, 'spin');
+      spawnDamageNumber(enemy.pos, CONFIG.ZAKO_DAMAGE_SPIN, 'spin');
       state.stats.spinKills++;
     } else {
       // 撃破ぶんを積む（回転アタックより少ない）
       addBonus('killBonus', CONFIG.NORMAL_KILL_BONUS);
       triggerHitstop('normal');
       spawnKillFx(enemy.pos, 'normal');
+      spawnDamageNumber(enemy.pos, CONFIG.ZAKO_DAMAGE_NORMAL, 'normal');
     }
     state.stats.kills++;
     let refill = CONFIG.SCORE_KILL_REFILL;
@@ -4116,7 +4155,10 @@ function createGame() {
     boss.hp -= damage;
     boss.flash = CONFIG.FLASH_DURATION;
     triggerHitstop(kind);
+    // 図形のエフェクトの上に、雑魚を倒した時の絵のエフェクトも重ねる
     spawnHitFx(contact, kind, CONFIG.HIT_FX_SCALE_BOSS_HIT);
+    spawnKillFx(contact, kind);
+    spawnDamageNumber(contact, damage, kind);
     onDriftDashHit();
     addBossHitBonus(kind);
     // 顔に正面から当てたら、魚は少し跳ね返される。サメから魚への向きへ押す
@@ -4156,7 +4198,7 @@ function createGame() {
     state.stats.bossAttackHits++;
   }
 
-  // 本体や部位に当てた時の、ダメージ以外の共通の手応え（ヒットストップ・エフェクト・加速の演出）。ダメージの量を返す
+  // 本体や部位に当てた時の共通の手応え（ヒットストップ・エフェクト・ダメージの数字・加速）。ダメージの量を返す
   function bossHitFeedback(contact) {
     let damage = CONFIG.BOSS_BODY_DAMAGE;
     let kind = 'normal';
@@ -4165,7 +4207,10 @@ function createGame() {
       kind = 'spin';
     }
     triggerHitstop(kind);
+    // 図形のエフェクトの上に、雑魚を倒した時の絵のエフェクトも重ねる
     spawnHitFx(contact, kind, CONFIG.HIT_FX_SCALE_BOSS_HIT);
+    spawnKillFx(contact, kind);
+    spawnDamageNumber(contact, damage, kind);
     onDriftDashHit();
     addBossHitBonus(kind);
     state.fish.bossHitCooldown = CONFIG.BOSS_HIT_COOLDOWN;
@@ -4296,17 +4341,23 @@ function createGame() {
     // 速いほど痛い。基本ダメージに速度ぶんを足す
     const speedDamage = totalSpeed() * CONFIG.BOSS_DAMAGE_PER_SPEED;
     if (isSpinning()) {
-      boss.hp -= (CONFIG.BOSS_DAMAGE_NORMAL + speedDamage) * CONFIG.BOSS_SPIN_DAMAGE_MULT;
+      const spinDamage = (CONFIG.BOSS_DAMAGE_NORMAL + speedDamage) * CONFIG.BOSS_SPIN_DAMAGE_MULT;
+      boss.hp -= spinDamage;
       boss.flash = CONFIG.FLASH_DURATION;
       triggerHitstop('spin');
       spawnHitFx(contact, 'spin', CONFIG.HIT_FX_SCALE_BOSS_HIT);
+      spawnKillFx(contact, 'spin');
+      spawnDamageNumber(contact, spinDamage, 'spin');
       onDriftDashHit();
       addBossHitBonus('spin');
     } else if (billHit || isFrontalHit(boss.pos)) {
-      boss.hp -= CONFIG.BOSS_DAMAGE_NORMAL + speedDamage;
+      const normalDamage = CONFIG.BOSS_DAMAGE_NORMAL + speedDamage;
+      boss.hp -= normalDamage;
       boss.flash = CONFIG.FLASH_DURATION;
       triggerHitstop('normal');
       spawnHitFx(contact, 'normal', CONFIG.HIT_FX_SCALE_BOSS_HIT);
+      spawnKillFx(contact, 'normal');
+      spawnDamageNumber(contact, normalDamage, 'normal');
       onDriftDashHit();
       addBossHitBonus('normal');
     } else {
@@ -5308,6 +5359,7 @@ function createGame() {
     // パーティクルはクリア後も最後まで消えていくように、ゲームの進行とは別に回す
     updateParticles(gameDt);
     updateKillFx(realDt, gameDt);
+    updateDamageNumbers(realDt);
     updateVisual(realDt);
   }
 
@@ -5538,6 +5590,8 @@ function createRenderer(game, canvas) {
   function token(name) {
     return css.getPropertyValue(name).trim();
   }
+  // ダメージの数字に使う字体。HUD と同じ（CSS の --font-hud）
+  const hudFont = token('--font-hud');
   const colors = {
     waterTop: token('--water-top'),
     waterMid: token('--water-mid'),
@@ -7132,6 +7186,44 @@ function createRenderer(game, canvas) {
 
   // 画面外のボスの方角を示す目印。画面の中心からボスへ向かう線が、画面の端（少し内側）と交わるところに、
   // 中心が濃く外側ほど薄い赤い円を置く。ボスが近いほど濃い。画面の座標（拡大前の px）で描く
+  // ダメージの数字の書き方。整数ならそのまま、そうでなければ小数1けた（サメの顔への 1.5 など）
+  function formatDamage(value) {
+    if (Math.abs(value - Math.round(value)) < 0.05) {
+      return String(Math.round(value));
+    }
+    return value.toFixed(1);
+  }
+
+  // ダメージの数字。画面の座標で描くので、カメラが引いても同じ大きさで読める。濃いふちどりの上に白（回転は黄色）
+  function drawDamageNumbers(state, camX, camY, scale) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    for (const n of state.damageNumbers) {
+      const t = n.age / CONFIG.DAMAGE_NUMBER_LIFETIME;
+      const x = (n.pos.x - camX) * scale + n.dx;
+      // 最初に速く浮いて、だんだんゆっくりになる（1-(1-t)^2）
+      const y = (n.pos.y - camY) * scale - CONFIG.DAMAGE_NUMBER_RISE * (1 - (1 - t) * (1 - t));
+      let size = CONFIG.DAMAGE_NUMBER_SIZE;
+      let color = colors.flash;
+      if (n.kind === 'spin') {
+        size = size * CONFIG.DAMAGE_NUMBER_SPIN_SCALE;
+        color = colors.driftSpin;
+      }
+      // 後半の半分で消えていく。前半ははっきり見せる
+      ctx.globalAlpha = clamp((1 - t) * 2, 0, 1);
+      ctx.font = 'bold ' + Math.round(size) + 'px ' + hudFont;
+      const text = formatDamage(n.value);
+      ctx.strokeStyle = colors.waterBottom;
+      ctx.lineWidth = CONFIG.DAMAGE_NUMBER_OUTLINE;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = color;
+      ctx.fillText(text, x, y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineJoin = 'miter';
+  }
+
   function drawBossMarker(boss, camX, camY, scale, w, h) {
     // ボスの位置を画面の座標に直す
     const bx = (boss.pos.x - camX) * scale;
@@ -7912,6 +8004,7 @@ function createRenderer(game, canvas) {
     drawDriftGauge(state);
     beginScreen(mainCtx);
     drawSpeedBurst(state, w, h);
+    drawDamageNumbers(state, camX - shakeX, camY - shakeY, scale);
 
     // ボスを倒した瞬間に画面全体を白く光らせる。画面の座標で描く
     if (state.screenFlash > 0) {
