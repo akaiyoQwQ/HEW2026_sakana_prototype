@@ -1034,6 +1034,11 @@ const CONFIG = {
   JELLY_PHASE_STEP: 0.7,        // 秒。並んだクラゲの揺れをずらす量
   JELLY_BOUNCE_SPEED: 700,      // px/秒。跳ね返された時に押し飛ばされる速さ
   JELLY_KNOCK_DECAY: 4,         // 1/秒。押し飛ばされた勢いが弱まる速さ
+  // クラゲ自身のノックバック（v103）。ぶつかった魚から離れる向きに押され、止まったら元の場所へゆっくり戻る
+  JELLY_PUSH_SPEED: 1200,       // px/秒。ぶつかった瞬間にクラゲが押される速さ。押される距離はおよそ これ ÷ JELLY_PUSH_DECAY（300px）
+  JELLY_PUSH_DECAY: 4,          // 1/秒。クラゲが押された勢いが弱まる速さ
+  JELLY_PUSH_REST_SPEED: 30,    // px/秒。押された勢いがこれより遅くなったら「止まった」として、元の場所へ戻り始める
+  JELLY_RETURN_SPEED: 150,      // px/秒。元の場所へ戻る速さ
   JELLY_ALPHA: 0.85,            // クラゲの濃さ
   BOTTLE_RADIUS: 45,            // px。ビンの大きさ
   BAG_RADIUS: 60,               // px。袋の大きさ
@@ -1081,14 +1086,17 @@ const CONFIG = {
   BLAST_PHASE_STEP: 0.2,        // 秒。噴射口ごとのずれ1段ぶん。ステージに置く時に段（step）を決め、段 × これだけ遅らせて噴く
   BLAST_LENGTH: 700,            // px。熱の柱の長さ（口から噴く向きへ）
   BLAST_WIDTH: 180,             // px。熱の柱の太さ
-  BLAST_MOUTH_SIZE: 120,        // px。口の幅
-  BLAST_MOUTH_DEPTH: 60,        // px。口の土台の厚み（半分は壁にめり込ませる）
-  BLAST_KNOCK: 1800,            // px/秒。吹き飛ばされた瞬間の速さ
-  BLAST_KNOCK_DECAY: 2,         // 1/秒。吹き飛ばされた勢いが弱まる速さ。2 で合計およそ BLAST_KNOCK ÷ 2 = 900px 運ばれる（クラゲの JELLY_KNOCK_DECAY とは別）
+  // 見た目（v103）：壁から盛り上がる小さな火山。てっぺんの火口から熱の柱を噴く（熱の柱の根元は火口）
+  BLAST_MOUND_SIZE: vec2(240, 140), // px。火山の根元の幅と、壁からの高さ
+  BLAST_MOUND_BURY: 30,         // px。根元を壁にめり込ませる深さ（すき間を作らないため）
+  BLAST_CRATER_WIDTH: 70,       // px。てっぺんの火口の幅
+  BLAST_CRATER_DEPTH: 24,       // px。火口のくぼみの深さ（暗い色・噴く時は熱の色で塗る）
+  BLAST_WARN_STEPS: 4,          // 段。予告で火口から根元へ赤く染まっていく段の数。ドットの層は半透明が使えないので、段で色を変えて見せる
+  BLAST_KNOCK: 2700,            // px/秒。吹き飛ばされた瞬間の速さ（v103 で 1800 → 2700。合計およそ 1350px 運ばれる）
+  BLAST_KNOCK_DECAY: 2,         // 1/秒。吹き飛ばされた勢いが弱まる速さ。2 で合計およそ BLAST_KNOCK ÷ 2 = 1350px 運ばれる（クラゲの JELLY_KNOCK_DECAY とは別）
   BLAST_SHAKE: 8,               // px。予告中に口が震える幅
   BLAST_SHAKE_FREQ: 40,         // 回/秒（ラジアン）。予告中に口が震える速さ
-  BLAST_WARN_LINE: 10,          // px。予告中に、これから噴く範囲の縁を描く線の太さ
-  BLAST_MOUTH_EDGE: 4,          // px。口の土台の縁取りの太さ
+  BLAST_MOUND_EDGE: 4,          // px。火山の縁取りの太さ
   BLAST_CORE_RATE: 0.45,        // 熱の柱の明るい芯の太さ（柱の太さに対する割合）
   MAP_SCALE: 17,                // px。ステージ地図の絵の1あたりのゲームの長さ。全ステージ共通。②の道幅（絵の上で約22）を、それまでの道幅 380px に合わせた値
   GATE_WIDTH: 8,
@@ -3556,7 +3564,8 @@ function createGame() {
         return { tri: stoneTriangle(s), base: s.pos, dirDeg: s.dirDeg };
       }),
       jellies: list('jellies').map(function (p, i) {
-        return { home: vec2(p.x, p.y), pos: vec2(p.x, p.y), phase: i * CONFIG.JELLY_PHASE_STEP, cooldown: 0 };
+        // push はぶつかって押された勢い、off は元の場所（home）からのずれ（v103）
+        return { home: vec2(p.x, p.y), pos: vec2(p.x, p.y), phase: i * CONFIG.JELLY_PHASE_STEP, cooldown: 0, push: vec2(0, 0), off: vec2(0, 0) };
       }),
       bottles: list('bottles').map(function (p) {
         return { pos: vec2(p.x, p.y), alive: true };
@@ -3582,7 +3591,9 @@ function createGame() {
       // k はその段階の進み具合（0〜1）。見た目はこの2つだけを読む。hitBurst は最後に吹き飛ばした噴射の番号（1回の噴射で1回だけ当てる）
       blasts: list('blasts').map(function (b) {
         const a = b.dirDeg * DEG;
-        return { pos: b.pos, dir: vec2(Math.cos(a), Math.sin(a)), angle: a, delay: b.step * CONFIG.BLAST_PHASE_STEP, mode: 'rest', k: 0, hitBurst: -1 };
+        // mouth は火口（熱の柱の根元）。壁の上の pos から、噴く向きへ火山の高さだけ先
+        const mouth = vec2(b.pos.x + Math.cos(a) * CONFIG.BLAST_MOUND_SIZE.y, b.pos.y + Math.sin(a) * CONFIG.BLAST_MOUND_SIZE.y);
+        return { pos: b.pos, mouth: mouth, dir: vec2(Math.cos(a), Math.sin(a)), angle: a, delay: b.step * CONFIG.BLAST_PHASE_STEP, mode: 'rest', k: 0, hitBurst: -1 };
       }),
       blastClock: 0,           // 秒。噴射口の周期を数える時計。ステージの頭から進める
       // ひびの入った壁。当たりは岩と同じ多角形（長方形）で持つ。ひびの線は置いた時に一度だけ作る
@@ -3805,10 +3816,10 @@ function createGame() {
     }
   }
 
-  // 半径 r の円が噴射口の熱の柱（口から噴く向きへ長さ BLAST_LENGTH、太さ BLAST_WIDTH の長方形）に触れているか
+  // 半径 r の円が噴射口の熱の柱（火口から噴く向きへ長さ BLAST_LENGTH、太さ BLAST_WIDTH の長方形）に触れているか
   function insideBlast(p, b, r) {
-    const dx = p.x - b.pos.x;
-    const dy = p.y - b.pos.y;
+    const dx = p.x - b.mouth.x;
+    const dy = p.y - b.mouth.y;
     const along = dx * b.dir.x + dy * b.dir.y;
     const across = Math.abs(-dx * b.dir.y + dy * b.dir.x);
     return along >= -r && along <= CONFIG.BLAST_LENGTH + r && across <= CONFIG.BLAST_WIDTH / 2 + r;
@@ -3949,8 +3960,28 @@ function createGame() {
     // クラゲ：ふわふわ上下に漂う。当たると、ぶつかった面で向きを跳ね返して、反対へ押し飛ばす
     for (const j of g.jellies) {
       j.phase += dt;
-      j.pos.x = j.home.x + CONFIG.JELLY_BOB.x * Math.sin(j.phase * TAU / CONFIG.JELLY_BOB_PERIOD);
-      j.pos.y = j.home.y + CONFIG.JELLY_BOB.y * Math.sin(j.phase * TAU / CONFIG.JELLY_BOB_PERIOD);
+      // 押された勢いでずらし、勢いは少しずつ弱める。止まったら、ずれを元の場所へ一定の速さで戻す
+      j.off.x += j.push.x * dt;
+      j.off.y += j.push.y * dt;
+      const pushKeep = Math.exp(-CONFIG.JELLY_PUSH_DECAY * dt);
+      j.push.x *= pushKeep;
+      j.push.y *= pushKeep;
+      if (Math.hypot(j.push.x, j.push.y) < CONFIG.JELLY_PUSH_REST_SPEED) {
+        const offLen = Math.hypot(j.off.x, j.off.y);
+        const back = Math.min(offLen, CONFIG.JELLY_RETURN_SPEED * dt);
+        if (offLen > 0) {
+          j.off.x -= j.off.x / offLen * back;
+          j.off.y -= j.off.y / offLen * back;
+        }
+      }
+      const bobX = CONFIG.JELLY_BOB.x * Math.sin(j.phase * TAU / CONFIG.JELLY_BOB_PERIOD);
+      const bobY = CONFIG.JELLY_BOB.y * Math.sin(j.phase * TAU / CONFIG.JELLY_BOB_PERIOD);
+      j.pos.x = j.home.x + j.off.x + bobX;
+      j.pos.y = j.home.y + j.off.y + bobY;
+      // 壁にめり込ませない。壁で止められた分はずれからも引いておく（壁に押し付けたまま戻り始める）
+      keepInsideStage(j.pos, CONFIG.JELLY_RADIUS);
+      j.off.x = j.pos.x - j.home.x - bobX;
+      j.off.y = j.pos.y - j.home.y - bobY;
       if (j.cooldown > 0) {
         j.cooldown -= dt;
       }
@@ -3967,6 +3998,8 @@ function createGame() {
         fish.angle = Math.atan2(ry, rx);
         fish.moveAngle = fish.angle;
         fish.knock = vec2(nx * CONFIG.JELLY_BOUNCE_SPEED, ny * CONFIG.JELLY_BOUNCE_SPEED);
+        // クラゲも魚から離れる向きに押される（v103）
+        j.push = vec2(-nx * CONFIG.JELLY_PUSH_SPEED, -ny * CONFIG.JELLY_PUSH_SPEED);
         j.cooldown = CONFIG.TRAP_HIT_COOLDOWN;
         fish.flash = CONFIG.FLASH_DURATION;
         state.stats.trapHits++;
@@ -4272,6 +4305,18 @@ function createGame() {
     state.stats.rocksBroken++;
     // 石を壊しても、敵を倒した時と同じくゲージ（＝のこり時間）を戻す
     refillScore(CONFIG.SCORE_ROCK_REFILL);
+  }
+
+  // 魚以外のもの（クラゲなど）を、泳げる場所の中に半径 r ぶん離して置いておく（v103）
+  function keepInsideStage(pos, r) {
+    const stage = currentStage();
+    if (stage.water) {
+      clampToWater(pos, stage.water, r);
+      return;
+    }
+    if (stage.corridors) {
+      clampToCorridors(pos, stage.corridors, r);
+    }
   }
 
   function clampToStage(pos) {
@@ -6613,6 +6658,12 @@ function createRenderer(game, canvas) {
     spikeTip: token('--spike-tip'),
     fg: token('--fg'),
   };
+  // 噴射口の火山が予告で赤く染まっていく段の色。岩の色から警告の赤まで BLAST_WARN_STEPS 段。
+  // ドットの層の色の一覧に入れるため、ここで作っておく（色の一覧は colors の中身から作る）
+  colors.blastWarnSteps = [];
+  for (let i = 1; i <= CONFIG.BLAST_WARN_STEPS; i++) {
+    colors.blastWarnSteps.push(mixColor(colors.rockBase, colors.blastWarn, i / CONFIG.BLAST_WARN_STEPS));
+  }
   const reduceMotion = token('--reduce-motion') === '1';
 
   // ===== 絵（スプライト） =====
@@ -8998,57 +9049,93 @@ function createRenderer(game, canvas) {
   }
 
   // ---------- 新ギミックの見た目（v82。絵をもらうまでの仮の図形） ----------
-  // 噴射口の熱の柱。口の付け根 b.pos を原点に、噴く向きを右（+x）に回した座標で描く。
+  // 噴射口の熱の柱。火口 b.mouth を原点に、噴く向きを右（+x）に回した座標で描く。
   // ドットの層は色を決まった色に寄せるので、半透明は使わず不透明の色だけで描く（半透明だと灰色に化けるため）。
-  // 予告中は、これから噴く範囲の縁を口から先へ伸ばしていく。噴射中は柱を塗り、明るい芯が口のほうへ縮んでいく
+  // 噴射中は柱を塗り、明るい芯が火口のほうへ縮んでいく。予告は火山が赤く染まるので、柱の側には描かない
   function drawBlastHeat(b) {
-    if (b.mode === 'rest') {
+    if (b.mode !== 'active') {
       return;
     }
     ctx.save();
-    ctx.translate(b.pos.x, b.pos.y);
+    ctx.translate(b.mouth.x, b.mouth.y);
     ctx.rotate(b.angle);
     const half = CONFIG.BLAST_WIDTH / 2;
-    if (b.mode === 'warn') {
-      ctx.strokeStyle = colors.blastWarn;
-      ctx.lineWidth = CONFIG.BLAST_WARN_LINE;
-      ctx.strokeRect(0, -half, CONFIG.BLAST_LENGTH * b.k, CONFIG.BLAST_WIDTH);
-    }
-    if (b.mode === 'active') {
-      ctx.fillStyle = colors.blastHeat;
-      ctx.fillRect(0, -half, CONFIG.BLAST_LENGTH, CONFIG.BLAST_WIDTH);
-      const core = half * CONFIG.BLAST_CORE_RATE;
-      ctx.fillStyle = colors.vent;
-      ctx.fillRect(0, -core, CONFIG.BLAST_LENGTH * (1 - b.k), core * 2);
-    }
+    ctx.fillStyle = colors.blastHeat;
+    ctx.fillRect(0, -half, CONFIG.BLAST_LENGTH, CONFIG.BLAST_WIDTH);
+    const core = half * CONFIG.BLAST_CORE_RATE;
+    ctx.fillStyle = colors.vent;
+    ctx.fillRect(0, -core, CONFIG.BLAST_LENGTH * (1 - b.k), core * 2);
     ctx.restore();
   }
 
-  // 噴射口の口の土台と穴。予告中だけ横に震わせ、穴を赤く光らせる。噴射中の穴は熱の色
+  // 噴射口の火山。壁の上の b.pos を原点に、噴く向きを右（+x、壁から水の側へ）に回した座標で描く。
+  // 予告中は、火口から根元へ向かって BLAST_WARN_STEPS 段で赤く染まりながら横に震える。噴射中は山全体が赤く、火口が熱の色
   function drawBlastMouth(b, t) {
-    ctx.save();
-    ctx.translate(b.pos.x, b.pos.y);
-    ctx.rotate(b.angle);
+    const W = CONFIG.BLAST_MOUND_SIZE.x;
+    const H = CONFIG.BLAST_MOUND_SIZE.y;
+    const bury = CONFIG.BLAST_MOUND_BURY;
+    const crater = CONFIG.BLAST_CRATER_WIDTH;
+    const steps = CONFIG.BLAST_WARN_STEPS;
     let shake = 0;
     if (b.mode === 'warn') {
       shake = Math.sin(t * CONFIG.BLAST_SHAKE_FREQ) * CONFIG.BLAST_SHAKE;
     }
-    const depth = CONFIG.BLAST_MOUTH_DEPTH;
-    const mouthHalf = CONFIG.BLAST_MOUTH_SIZE / 2;
+    ctx.save();
+    ctx.translate(b.pos.x, b.pos.y);
+    ctx.rotate(b.angle);
+    ctx.translate(0, shake);
+    // 山の形。根元は壁にめり込ませ、中腹で少しすぼめて、てっぺんは火口の幅で平らに切る
+    const moundPath = function () {
+      ctx.beginPath();
+      ctx.moveTo(-bury, -W / 2);
+      ctx.lineTo(H * 0.4, -W * 0.3);
+      ctx.lineTo(H, -crater / 2);
+      ctx.lineTo(H, crater / 2);
+      ctx.lineTo(H * 0.4, W * 0.3);
+      ctx.lineTo(-bury, W / 2);
+      ctx.closePath();
+    };
+    moundPath();
     ctx.fillStyle = colors.rockBase;
-    ctx.strokeStyle = colors.rockDark;
-    ctx.lineWidth = CONFIG.BLAST_MOUTH_EDGE;
-    ctx.fillRect(-depth / 2, -mouthHalf + shake, depth, CONFIG.BLAST_MOUTH_SIZE);
-    ctx.strokeRect(-depth / 2, -mouthHalf + shake, depth, CONFIG.BLAST_MOUTH_SIZE);
-    let holeColor = colors.rockDark;
+    ctx.fill();
+    // 赤く染まった所。山の形で切り抜いて、火口の側から段ごとに塗る
+    let litSteps = 0;
     if (b.mode === 'warn') {
-      holeColor = colors.blastWarn;
+      litSteps = Math.min(steps, Math.floor(b.k * steps) + 1);
     }
     if (b.mode === 'active') {
-      holeColor = colors.blastHeat;
+      litSteps = steps;
     }
-    ctx.fillStyle = holeColor;
-    ctx.fillRect(0, -mouthHalf / 2 + shake, depth / 2, mouthHalf);
+    if (litSteps > 0) {
+      ctx.save();
+      moundPath();
+      ctx.clip();
+      const band = (H + bury) / steps;
+      for (let i = 0; i < litSteps; i++) {
+        // 火口に近い段ほど濃い赤。噴いている間は全部いちばん濃い赤
+        let colorIndex = steps - 1 - i;
+        if (b.mode === 'active') {
+          colorIndex = steps - 1;
+        }
+        ctx.fillStyle = colors.blastWarnSteps[colorIndex];
+        ctx.fillRect(H - band * (i + 1), -W / 2, band, W);
+      }
+      ctx.restore();
+    }
+    moundPath();
+    ctx.strokeStyle = colors.rockDark;
+    ctx.lineWidth = CONFIG.BLAST_MOUND_EDGE;
+    ctx.stroke();
+    // 火口のくぼみ。ふだんは暗い色、予告中は警告の赤、噴いている間は熱の色
+    let craterColor = colors.rockDark;
+    if (b.mode === 'warn') {
+      craterColor = colors.blastWarn;
+    }
+    if (b.mode === 'active') {
+      craterColor = colors.blastHeat;
+    }
+    ctx.fillStyle = craterColor;
+    ctx.fillRect(H - CONFIG.BLAST_CRATER_DEPTH, -crater / 2, CONFIG.BLAST_CRATER_DEPTH, crater);
     ctx.restore();
   }
 
