@@ -411,9 +411,9 @@
       <!-- 左の列：タイトル・説明・ステージの選択 -->
       <div class="title-col">
         <h1 id="titleName">鮮度限界突破</h1>
-        <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全10ステージ。STAGE 4・6・8・10 は奥の部屋で待つ大物を倒せばクリア、それ以外は奥にある光る目標にたどり着けばクリア。敵を倒したり岩を壊したりすると時間が延びる。制限時間を過ぎると水路が崩れてやり直し。タイムが短いほどいい記録。</p>
+        <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全3ステージ。水路を抜けた先の部屋で待つ大物を倒せばクリア。部屋に着くまでは制限時間があり、敵を倒したり岩を壊したりすると時間が延びる。間に合わないと水路が崩れてやり直し。部屋に入ったら時間は止まる。タイムが短いほどいい記録。</p>
         <div class="title-menu">
-          <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全10）</button>
+          <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全3）</button>
           <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全9）</button>
           <button class="title-choice" id="choiceBoss" type="button"><span class="key">3</span>　ボスだけ（全5）</button>
         </div>
@@ -609,7 +609,7 @@ const CONFIG = {
   SPIKE_WIDTH_MAX: 18,          // px。上限
   SPIKE_ANGLE_JITTER_DEG: 25,   // 度。トゲの向きを真っすぐ外向きから傾ける最大の角度
   SPIKE_TIP_RATIO: 0.4,         // 割合。トゲの先から何割を危ない色（--spike-tip）で塗るか
-  BREAKABLE_MOVE_SPEED: 140,    // px/秒。迫り岩の速さ
+  BREAKABLE_MOVE_SPEED: 150,    // px/秒。迫り岩と動く石の速さ（v102 で 140 → 150）
   BREAKABLE_TRIGGER_MARGIN: 300, // px。迫り岩が「画面の端 + これ」の範囲に入ったら動き出す。画面の外から動きながら入ってくる
   BREAKABLE_MAX_TRAVEL: 3000,   // px。迫り岩が動き出してから消えるまでに進む距離
   BREAKABLE_BREAK_BONUS: 60,    // px/秒。壊した時に積む速度（回転ぶん）。回転で敵を倒した時と同じ
@@ -820,6 +820,8 @@ const CONFIG = {
   // カジキの絵を変えてもサメが自動でついてくるようにするため。計算は sharkRadius()
   BOSS_SIZE_TO_PLAYER: 4,       // 倍。ボスの全長（尾の先から鼻先まで）が、カジキの全長の何倍か。今はサメだけに使う
   SHARK_TAIL_LENGTH_RATIO: 1.7, // 胴の横の半径に対する、中心から尾びれの先までの長さ。全長＝半径×(1＋これ)
+  SKETCH_SCALE: 45,             // px。手描きのステージ設計（v102）の絵の 1 ピクセルあたりのゲームの長さ。通路の太さ（絵の上で 8〜10）が、それまでの道幅 380px くらいになる値
+  SKETCH_BAR_CRAB_FACE: -1,     // 浮いた棒に張り付くカブトガニの頭の向き（-1 左 / 1 右）
   BOSS_ROOM_SCALE: 2,           // 倍。ボスの部屋（地図の部屋）を、入口の線の真ん中を軸にこの倍率で奥へ広げる。入口と通路はそのまま
   BOSS_START_DEPTH: 0.5,        // ボスの最初の位置（仮のボス以外の全部）。入口から部屋の中心へ向かう線の先（部屋の奥）のどこに置くか。0 で部屋の中心、1 で体が壁に当たらずに行ける一番奥
   BOSS_WALL_GAP: 60,            // px。サメが泳ぐ時に、部屋の壁と体の間に空ける余白。体が大きいので、半径ぶん＋これだけ内側を泳ぐ
@@ -1358,7 +1360,7 @@ function breakableShape(seed, withSpikes) {
   return { corners: corners, cracks: cracks, spikes: spikes };
 }
 
-// ひび割れ岩の置き場所。kind は 'static'（置き岩）か 'moving'（迫り岩）。dirDeg は迫り岩が進む向き（度。180 が左、90 が下）
+// ひび割れ岩の置き場所。kind は 'static'（置き岩）/ 'moving'（迫り岩）/ 'roll'（動く石。v102。トゲなし）/ 'still'（動かない突石。v102。トゲあり）。dirDeg は迫り岩が進む向き（度。180 が左、90 が下）
 function breakable(x, y, kind, seed, dirDeg) {
   const ang = dirDeg * Math.PI / 180;
   // トゲは触れると被弾する迫り岩だけ
@@ -1366,7 +1368,7 @@ function breakable(x, y, kind, seed, dirDeg) {
     pos: vec2(x, y),
     kind: kind,
     dir: vec2(Math.cos(ang), Math.sin(ang)),
-    shape: breakableShape(CONFIG.ROCK_SEED + seed, kind === 'moving'),
+    shape: breakableShape(CONFIG.ROCK_SEED + seed, kind === 'moving' || kind === 'still'),
   };
 }
 
@@ -1736,7 +1738,294 @@ const BOT_9 = [[494, 1405], [490, 1385], [470, 1350], [460, 1300], [455, 1250], 
 
 // ステージの一覧。上から順に遊ぶ。ゲームの処理は1本で、type で違うところ（クリア条件）だけを分ける
 // ボスは今は4つとも同じ（仮置き）。サメ・フグ・タコ・深海魚に差し替える時に、ここに種類を足す
-const STAGES_NORMAL = [
+// ===== 手描きのステージ設計（v102 から。どりゃどりゃさんの手描きの Stage 1〜3 をそのまま写した3ステージ） =====
+// 数字は手描きの絵の上の座標（横 837 の絵のピクセル）のまま並べ、SKETCH_SCALE を掛けてゲームの座標にする。
+// 壁の点は、絵を拡大して置いた点を、一番近い鉛筆の線に吸い付けて合わせたもの。
+// outer = 泳げる場所の外側の縁（最初と最後の点の間がスタートの口）、holes = 泳げる場所の中の島（浮いた棒もここ）。
+// 道中とボス部屋は1つのマップ。部屋に入りきると入口がふさがり、制限時間が止まる。ボスを倒すとクリア。
+// 置く物：enemies 通常の敵（×）/ jellies クラゲ / bottles ゴミ（ビン、＋）/ bags ゴミ（袋、⊕）/
+//   crabs Trap（カブトガニ。印の位置から一番近い壁に張り付ける。床・天井・壁のどれでも）/ barCrabs 浮いた棒の上下のカブトガニ [x, y, 外向きの角度] /
+//   stones 石（□。止まっている）/ rollers 左へ動く石 / spikesLeft・spikesRight 左・右へ動く突石（⊠）/ spikesStill 動かない突石 /
+//   rockSpikes 岩石（壁から生えるとがった岩）/ ventsUp・ventsDown 海流口（床から上へ・天井から下へ）/ blastsDown 下向きの噴射口 /
+//   currents 海流（帯の始まり a → 終わり b、幅）/ walls 隠し壁（回転で壊せる壁。真ん中、大きさ、傾き）/
+//   room ボス部屋（中心と、ボスが動く円の半径、広げる対象にする中心からの距離 reach、広げる倍率 grow）/ gate 部屋の入口の線 / bot 検証用の通り道
+// 秒。各ステージの道中の制限時間。倒さないと時間切れ（敵を倒すとのこり時間が戻る）
+const SKETCH_TIME_1 = 17;   // 何も倒さないボットが部屋の入口に着くタイム（22.7秒）の約3/4
+const SKETCH_TIME_2 = 24.5; // 同じく 32.9秒の約3/4
+const SKETCH_TIME_3 = 36;   // 同じく 48.3秒の約3/4
+
+const SKETCH_1 = {
+  start: [377, 273],
+  startDeg: 0,
+  outer: [[375, 268.5], [399.5, 260], [419.5, 261], [422.5, 264.5], [460, 264.4], [461.9, 268.75], [465.6, 268.75], [466.25, 256.25], [475, 256.1], [488, 258.4], [508.5, 258.4], [520, 251.5], [525, 252.5], [558, 256], [563, 260.5], [580.5, 260.6], [580.5, 278.1], [588.5, 278.1], [596, 266.2], [620, 266], [640.5, 266.5], [664, 269], [668.9, 274.1], [679.1, 260.1], [678.1, 252.9], [668.1, 246.5], [631.2, 246], [619, 237], [610.7, 227], [610.4, 223.5], [605.44, 223.99], [600.19, 223.18], [594.31, 224.08], [589.12, 219.82], [585.88, 215.61], [584.8, 209.23], [585.01, 205.47], [586.56, 200.19], [589.42, 195.22], [592.47, 190.87], [596.01, 187.42], [598.28, 185.1], [603.99, 184.05], [609.79, 183.35], [613.35, 183.96], [622.85, 185.79], [626.49, 189.16], [627.54, 193.81], [627.35, 200.46], [626.32, 204.77], [624.46, 208.9], [622.85, 215.53], [619.17, 219.36], [614.64, 222.14], [615.7, 224.5], [616.4, 227], [625, 236.4], [670.7, 236.4], [679.4, 243.2], [685.2, 249.5], [685.5, 268.1], [674.5, 279.4], [675.5, 277.5], [666, 288.5], [578, 287], [573.25, 283], [570.9, 264.2], [561.5, 265.7], [557, 271.7], [526.5, 271], [521, 260.5], [520, 263], [505, 269.4], [490, 270.4], [477, 261], [470, 262], [470, 273.75], [462, 273.75], [462, 277.5], [425.5, 277.5], [415, 268], [400.5, 268], [375, 278.75]],
+  holes: [],
+  enemies: [[444, 266], [429, 273], [455, 274], [493, 265], [496, 265], [499, 265], [502, 265], [540, 258], [533, 266], [546, 266], [616, 277], [639, 277], [617, 230], [624, 238], [634, 242], [645, 242], [657, 242], [668, 242], [602, 192], [594, 205], [621, 193]],
+  jellies: [],
+  bottles: [],
+  bags: [],
+  crabs: [[624, 286], [603, 268], [655, 270], [596, 188], [625, 195], [595, 222]],
+  stones: [[520, 256]],
+  rollers: [[621, 270], [604, 283], [653, 285]],
+  spikesLeft: [],
+  spikesRight: [],
+  spikesStill: [[600, 197], [615, 197], [598, 211]],
+  rockSpikes: [],
+  ventsUp: [],
+  ventsDown: [],
+  blastsDown: [],
+  currents: [],
+  walls: [],
+  room: { center: [606, 203], radius: 19, reach: 30, grow: 2 },
+  gate: [[610.4, 223.5], [615.7, 224.5]],
+  bot: [[377, 273], [395, 264], [418, 264], [425, 270], [458, 270], [467.5, 270], [467.5, 259], [475, 259], [490, 263], [507, 264], [518, 254], [526, 255], [545, 262], [570, 262], [575.5, 268], [575.5, 283], [590, 283], [640, 280], [668, 281], [680, 268], [682, 255], [679, 248], [670, 242], [630, 240], [618, 232], [613, 224], [606, 210]],
+};
+
+const SKETCH_2 = {
+  start: [380, 350.5],
+  startDeg: 0,
+  outer: [[382.5, 346.5], [393, 347.5], [395, 347], [402.5, 336], [445, 335], [452.5, 342.5], [460.6, 350.7], [467, 346], [474, 341.4], [481.5, 335], [497, 323], [540, 325], [551, 341], [559, 346], [560, 353], [582, 354], [620.5, 354], [621, 374], [639, 377.5], [653.5, 389.5], [657.5, 405.5], [657.5, 412.5], [680.5, 414], [678, 449], [628, 476], [629, 505], [565.5, 502], [537.5, 488.5], [522.5, 454], [520.89, 453.78], [512.32, 451.19], [508.91, 446.75], [506.33, 442.6], [505.7, 435.94], [506.13, 431.95], [506.15, 427.86], [508.27, 422.88], [510.43, 418.23], [513.55, 414.11], [515.99, 410.7], [520.08, 406.64], [525.11, 404.55], [530.38, 404], [535.66, 404.51], [540.71, 406.05], [545.32, 408.57], [549.29, 411.94], [552.45, 416.03], [554.66, 420.66], [556.33, 425.63], [556.89, 431.73], [556.37, 436.73], [552.78, 440.91], [549.74, 444.58], [545.86, 448.06], [541.32, 450.69], [536.31, 452.36], [535, 452.5], [541, 470], [624, 466], [670.5, 439], [671.5, 422], [646, 424], [645, 429.5], [629.5, 442], [615.5, 448.5], [604, 450], [590, 446], [580, 439.5], [574, 430], [574, 416], [579, 405], [588, 394.5], [598, 385.5], [610, 376.5], [610, 365], [560, 365], [559, 373.5], [551, 379.5], [541.5, 389.5], [524, 391], [482, 386], [479.9, 385.7], [479, 380], [475.6, 375], [469.9, 370], [462.7, 360.7], [461, 357], [448.5, 369], [401, 367], [394.5, 354], [394, 354.5], [382, 354.5]],
+  holes: [[[465.6, 355.4], [470.6, 350.7], [477.7, 346.4], [489, 347], [537.5, 347], [551, 359], [539, 364.5], [495, 363.6], [489, 364], [483.4, 370.4]], [[620, 384], [628, 385.5], [640.5, 392], [646, 403], [646, 407.5], [633.5, 430], [628, 433.5], [613.5, 438], [602, 439.5], [590, 434], [584.5, 423.5], [585, 423], [593.5, 400.5], [602.5, 389]]],
+  enemies: [[467.2, 350], [471.35, 346.9], [475.5, 343.8], [419, 346], [437, 357], [410, 359], [457, 356], [465, 358], [470, 365], [476, 371], [490, 336], [502, 339], [530, 334], [548, 343], [479, 379], [493, 373], [546, 372], [531, 382], [609, 383], [601, 389], [597, 396], [590, 401], [584, 409], [580, 418], [581, 430], [588, 437], [597, 442], [519, 419], [545, 421], [533, 440], [518, 433]],
+  jellies: [[407, 350], [427, 357], [446, 348], [509, 333], [519, 340], [531, 418], [512, 429], [543, 431]],
+  bottles: [],
+  bags: [],
+  crabs: [[493, 345], [512, 345], [530, 345], [493, 366], [507, 366], [522, 366], [534, 408], [550, 439], [518, 450]],
+  stones: [[627, 379], [637, 384], [646, 393], [652, 402]],
+  rollers: [[505, 373], [528, 373]],
+  spikesLeft: [[586, 358]],
+  spikesRight: [[575, 478], [593, 485], [587, 495]],
+  spikesStill: [],
+  rockSpikes: [[514, 381]],
+  ventsUp: [[419, 362], [505, 382], [535, 382]],
+  ventsDown: [[434, 343], [500, 328], [525, 328]],
+  blastsDown: [],
+  currents: [],
+  walls: [],
+  room: { center: [530.5, 428.5], radius: 22, reach: 31, grow: 1.15 },
+  gate: [[522.5, 454], [535, 452.5]],
+  bot: [[380, 350.5], [395, 351], [420, 350], [455, 353], [461, 354], [467, 350], [476, 344], [490, 340], [530, 338], [552, 346], [560, 359], [600, 359], [615, 363], [615, 378], [640, 383], [651, 395], [652, 410], [668, 418], [674, 425], [674, 445], [629, 469], [590, 480], [550, 478], [535, 465], [531, 450], [531, 430]],
+};
+
+const SKETCH_3 = {
+  start: [391, 931],
+  startDeg: -90,
+  outer: [[379.5, 926], [375, 853], [350, 840], [342.5, 831], [328, 722.5], [333, 621], [334, 598], [337, 582], [351.5, 566.5], [375, 562.5], [389.5, 562.5], [398, 570.5], [403.75, 587.5], [404, 590], [477, 585.5], [478, 585], [508.75, 571], [612, 566.5], [632, 577], [647.5, 590], [659.5, 601], [722.5, 607.5], [780.5, 615.5], [781, 616.5], [781.5, 655.5], [802, 658.5], [815.5, 668.5], [827, 693], [821.5, 712.5], [808, 734.5], [790.5, 754], [770, 762], [755, 767], [728, 763.5], [677, 771.5], [636.2, 768], [632.5, 849], [643, 869], [697.5, 887], [699.5, 889.5], [711, 1001], [709, 1003.5], [525.5, 1005], [523, 903.2], [589, 858.2], [595, 771.7], [531, 778.2], [509, 772.7], [496, 766.5], [438.5, 763], [410, 770], [416, 835], [403, 843], [387.5, 856], [402, 933]],
+  holes: [[[403.5, 606.5], [404, 741], [420.5, 741], [441.5, 735.5], [498, 739.5], [644, 740.75], [710.5, 741], [711, 729], [716.5, 707], [723.5, 699.5], [759, 660], [760, 647.5], [759, 646.25], [758, 635.25], [746.5, 631], [722, 627], [696.5, 624], [659.5, 623.5], [648, 635], [615, 662.5], [578, 697.75], [584, 703.5], [531, 705.5], [520.5, 691.5], [505.5, 673], [477.5, 645], [465.5, 627.5], [466, 605.5], [453, 603]], [[481, 603], [515.5, 582.5], [600, 586.5], [614.5, 588.5], [629, 594.5], [643, 604.5], [642.5, 626], [635.5, 631], [595.25, 649.25], [576.5, 629], [532, 632.75], [512, 660.75], [501, 647], [479.5, 631]], [[760.5, 678.5], [776.5, 671.5], [790.5, 674], [801, 685.5], [803.5, 703.5], [793.5, 722], [771, 750], [758, 757], [739.5, 755], [727, 745], [724, 732.5], [729.5, 712], [745, 692.5]], [[532, 662], [588, 662], [588, 666], [532, 666]]],
+  enemies: [[384, 862], [385, 875], [387, 888], [389, 901], [391, 914], [387, 637], [360, 656], [391, 697], [359, 712], [389, 756], [353, 787], [399, 787], [508, 577], [525, 576], [545, 575], [568, 577], [589, 577], [606, 577], [631, 587], [472, 612], [473, 622], [477, 633], [546, 636], [570, 636], [612, 651], [628, 641], [637, 636], [645, 756], [665, 755], [691, 754], [719, 751], [605, 781], [617, 781], [628, 781], [605, 800], [617, 800], [628, 800], [605, 819], [617, 819], [628, 819], [605, 837], [617, 837], [628, 837], [605, 850], [617, 850], [628, 850], [623, 890], [590, 933], [572, 962], [651, 958], [671, 960], [694, 942]],
+  jellies: [[356, 580], [375, 579], [391, 579], [359, 760], [382, 719]],
+  bottles: [[353, 630], [357, 591], [392, 598], [358, 682], [385, 664], [350, 740], [395, 800], [363, 822], [590, 907], [560, 935], [653, 907], [665, 933]],
+  bags: [[375, 768], [522, 668], [556.7, 913.3], [616.7, 930], [684, 913]],
+  crabs: [[545, 898], [567, 883], [587, 868], [647, 873], [663, 883], [683, 887]],
+  barCrabs: [[546, 662, -90], [558, 662, -90], [570, 662, -90], [546, 666, 90], [558, 666, 90], [570, 666, 90]],
+  stones: [[436, 598], [482, 592], [795, 676], [809, 709], [792, 737], [762, 759]],
+  rollers: [],
+  spikesLeft: [[705, 615]],
+  spikesRight: [],
+  spikesStill: [],
+  rockSpikes: [[468, 760], [529, 765], [502, 747], [574, 750]],
+  ventsUp: [[543, 695], [551, 695], [560, 695], [568, 695], [576, 695]],
+  ventsDown: [],
+  blastsDown: [[608, 746], [618, 746], [633, 746]],
+  currents: [{ a: [391, 930], b: [380, 852], width: 9 }, { a: [371, 830], b: [371, 580], width: 62 }, { a: [662, 612], b: [774, 620], width: 18 }, { a: [776, 622], b: [772, 660], width: 14 }, { a: [793, 666], b: [815, 690], width: 11 }, { a: [815, 690], b: [816, 720], width: 11 }, { a: [816, 720], b: [800, 745], width: 11 }, { a: [800, 745], b: [768, 760], width: 11 }],
+  walls: [{ pos: [412, 752], size: [2.7, 33], angleDeg: 0 }, { pos: [757, 670], size: [2.7, 15], angleDeg: -49 }],
+  room: { center: [617, 948], radius: 55, reach: 200, grow: 1 },
+  gate: [[590, 856.7], [633, 853]],
+  bot: [[391, 931], [385, 880], [378, 845], [372, 800], [372, 620], [385, 597], [420, 597], [462, 596], [472, 590], [490, 578], [560, 575], [620, 578], [645, 600], [670, 612], [740, 617], [772, 620], [772, 645], [772, 662], [790, 668], [812, 690], [813, 720], [798, 745], [770, 758], [740, 760], [715, 750], [690, 752], [650, 752], [620, 752], [612, 760], [612, 850], [615, 900], [617, 940]],
+};
+
+// 手描きの絵の座標を、スタートを原点にしたゲームの座標に直す
+function sketchPoint(def, p) {
+  return vec2((p[0] - def.start[0]) * CONFIG.SKETCH_SCALE, (p[1] - def.start[1]) * CONFIG.SKETCH_SCALE);
+}
+
+// 点 p から一番近い、泳げる場所の縁の点と、そこから水の側を向く向き（長さ1）。物を壁に張り付ける時に使う
+function nearestWaterEdge(water, p) {
+  let best = null;
+  for (const ring of water) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const ex = b.x - a.x;
+      const ey = b.y - a.y;
+      const len2 = ex * ex + ey * ey;
+      if (len2 <= 0) {
+        continue;
+      }
+      const t = clamp(((p.x - a.x) * ex + (p.y - a.y) * ey) / len2, 0, 1);
+      const q = vec2(a.x + ex * t, a.y + ey * t);
+      const d = Math.hypot(p.x - q.x, p.y - q.y);
+      if (best === null || d < best.d) {
+        const len = Math.sqrt(len2);
+        best = { d: d, point: q, nx: -ey / len, ny: ex / len };
+      }
+    }
+  }
+  // 辺の法線のうち、少し離れた点が水の中に入る方を「水の側」にする
+  const probe = vec2(best.point.x + best.nx * SKETCH_EDGE_PROBE, best.point.y + best.ny * SKETCH_EDGE_PROBE);
+  if (!insideWater(probe, water)) {
+    best.nx = -best.nx;
+    best.ny = -best.ny;
+  }
+  return { point: best.point, normal: vec2(best.nx, best.ny) };
+}
+// px。縁のどちらが水の側かを調べる時に、辺から離す距離（ゲームの座標）
+const SKETCH_EDGE_PROBE = 6;
+
+// 手描きのステージを組み立てる。地図のステージ（mapStage）と同じ形のステージを作り、ギミックとボス部屋も載せる
+// 度をラジアンに直す倍率。ゲームの DEG はこれより後で決まるので、ステージを組み立てる所ではこちらを使う
+const SKETCH_DEG = Math.PI / 180;
+
+function sketchStage(def, opts) {
+  const startAngle = def.startDeg * SKETCH_DEG;
+  const dir = vec2(Math.cos(startAngle), Math.sin(startAngle));
+  const introTime = CONFIG.INTRO_ENTER_TIME + CONFIG.COUNTDOWN_FROM * CONFIG.COUNTDOWN_STEP;
+  const runway = CONFIG.INTRO_SPEED * introTime + CONFIG.RUNWAY_WALL_MARGIN;
+  const P = function (p) { return sketchPoint(def, p); };
+  // ボス部屋を広げる。入口の線より部屋の側にあって、部屋の中心から reach 以内にある点だけを、入口の線の真ん中を軸に grow 倍へ動かす。
+  // 地図のステージと違って距離でも絞るのは、入口の線の向こう側に道中の別の通路があっても動かさないため
+  const g0 = P(def.gate[0]);
+  const g1 = P(def.gate[1]);
+  const mid = vec2((g0.x + g1.x) / 2, (g0.y + g1.y) / 2);
+  const roomC = P(def.room.center);
+  const reach = def.room.reach * CONFIG.SKETCH_SCALE;
+  const roomSide = Math.sign((g1.x - g0.x) * (roomC.y - g0.y) - (g1.y - g0.y) * (roomC.x - g0.x));
+  const k = def.room.grow;
+  const grow = function (q) {
+    const side = (g1.x - g0.x) * (q.y - g0.y) - (g1.y - g0.y) * (q.x - g0.x);
+    if (Math.abs(side) > ROOM_GATE_EPS && Math.sign(side) === roomSide && dist(q, roomC) <= reach) {
+      return vec2(mid.x + (q.x - mid.x) * k, mid.y + (q.y - mid.y) * k);
+    }
+    return q;
+  };
+  const W = function (p) { return grow(P(p)); };
+  const outer = def.outer.map(W);
+  const holes = def.holes.map(function (h) { return h.map(W); });
+  const first = outer[0];
+  const last = outer[outer.length - 1];
+  outer.push(vec2(last.x - dir.x * runway, last.y - dir.y * runway));
+  outer.push(vec2(first.x - dir.x * runway, first.y - dir.y * runway));
+  if (ringArea(outer) < 0) {
+    outer.reverse();
+  }
+  for (const h of holes) {
+    if (ringArea(h) > 0) {
+      h.reverse();
+    }
+  }
+  const water = [outer].concat(holes);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const q of outer) {
+    minX = Math.min(minX, q.x);
+    minY = Math.min(minY, q.y);
+    maxX = Math.max(maxX, q.x);
+    maxY = Math.max(maxY, q.y);
+  }
+  const margin = CONFIG.COURSE_VIEW_MARGIN;
+  // 壁に張り付ける物。印の位置から一番近い縁の点と、水の側の向き
+  const onWall = function (p) {
+    return nearestWaterEdge(water, W(p));
+  };
+  const crabs = def.crabs.map(function (p) {
+    const e = onWall(p);
+    // 床に伏せた向き（外向きが真上）から何度回すか。外向きの角度 + 90 度
+    const rot = Math.atan2(e.normal.y, e.normal.x) + Math.PI / 2;
+    return { x: e.point.x, y: e.point.y, rot: rot };
+  });
+  if (def.barCrabs) {
+    for (const c of def.barCrabs) {
+      const q = W([c[0], c[1]]);
+      crabs.push({ x: q.x, y: q.y, rot: c[2] * SKETCH_DEG + Math.PI / 2, face: CONFIG.SKETCH_BAR_CRAB_FACE });
+    }
+  }
+  // カブトガニは後ろの端（軸）で置くので、印の真ん中に体が来るよう、頭の向きと反対へ体の長さの半分だけずらす
+  for (const c of crabs) {
+    let face = CONFIG.CRAB_FACE_DIR;
+    if (c.face !== undefined) {
+      face = c.face;
+    }
+    c.x -= Math.cos(c.rot) * face * CONFIG.CRAB_SIZE.x / 2;
+    c.y -= Math.sin(c.rot) * face * CONFIG.CRAB_SIZE.x / 2;
+  }
+  const rockSpikes = def.rockSpikes.map(function (p) {
+    const e = onWall(p);
+    return { pos: e.point, dirDeg: Math.atan2(e.normal.y, e.normal.x) / SKETCH_DEG };
+  });
+  const vents = [];
+  for (const p of def.ventsUp) {
+    const e = onWall(p);
+    vents.push({ x: e.point.x, y: e.point.y, dir: -1 });
+  }
+  for (const p of def.ventsDown) {
+    const e = onWall(p);
+    vents.push({ x: e.point.x, y: e.point.y, dir: 1 });
+  }
+  const blasts = def.blastsDown.map(function (p, i) {
+    const e = onWall(p);
+    return { pos: e.point, dirDeg: Math.atan2(e.normal.y, e.normal.x) / SKETCH_DEG, step: i };
+  });
+  const currents = def.currents.map(function (c) {
+    return { a: W(c.a), b: W(c.b), width: c.width * CONFIG.SKETCH_SCALE };
+  });
+  const walls = def.walls.map(function (w) {
+    const q = W(w.pos);
+    return { x: q.x, y: q.y, size: vec2(w.size[0] * CONFIG.SKETCH_SCALE, w.size[1] * CONFIG.SKETCH_SCALE), angleDeg: w.angleDeg };
+  });
+  const stage = {
+    type: 'boss',
+    label: opts.label,
+    startPos: vec2(0, 0),
+    startAngleDeg: def.startDeg,
+    water: water,
+    left: minX - margin,
+    top: minY - margin,
+    width: maxX + margin,
+    height: maxY + margin,
+    timeLimit: opts.timeLimit,
+    rocks: [],
+    enemies: def.enemies.map(W),
+    breakables: [],
+    botPath: def.bot.map(W),
+    bossKind: opts.bossKind,
+    gimmicks: {
+      crabs: crabs,
+      stones: rockSpikes,
+      jellies: def.jellies.map(W),
+      bottles: def.bottles.map(W),
+      bags: def.bags.map(function (p) {
+        const q = W(p);
+        return { x: q.x, y: q.y, drift: false };
+      }),
+      currents: currents,
+      vents: vents,
+      blasts: blasts,
+      walls: walls,
+    },
+    roomCenter: grow(roomC),
+    roomRadius: def.room.radius * CONFIG.SKETCH_SCALE * k,
+    gate: [g0, g1],
+  };
+  let seed = 0;
+  // 石・動く石・突石。石は 'static'、動く石は 'roll'（トゲなし。動くが、触れても止められるだけ）、
+  // 動く突石は 'moving'、動かない突石は 'still'（トゲあり。動かない）
+  const addRocks = function (list, kind, dirDeg) {
+    for (const p of list) {
+      const q = W(p);
+      stage.breakables.push(breakable(q.x, q.y, kind, ++seed, dirDeg));
+    }
+  };
+  addRocks(def.stones, 'static', 180);
+  addRocks(def.rollers, 'roll', 180);
+  addRocks(def.spikesLeft, 'moving', 180);
+  addRocks(def.spikesRight, 'moving', 0);
+  addRocks(def.spikesStill, 'still', 180);
+  return stage;
+}
+
+// 前の地図の10ステージ（v81〜v101 の「ふつう」の組）。v102 で手描きの3ステージに入れ替えたので、ボス戦だけを「ボスだけ」の組で使う
+const STAGES_MAP_OLD = [
   mapStage(MAP_1, { label: 'STAGE 1  Move', type: 'zako', timeLimit: 6, /* 秒。敵も石もないので、ボットのクリアタイム（4.0秒）の約1.5倍のふつうの制限時間 */ botPath: BOT_1 }),
   mapStage(MAP_2, { label: 'STAGE 2  Kill', type: 'zako', timeLimit: 6, /* 秒。1体も倒さずに泳いだボットのタイム（7.5秒）の約3/4。倒して戻すぶんがないと間に合わない */ botPath: BOT_2 }),
   mapStage(MAP_3, { label: 'STAGE 3  Block', type: 'zako', timeLimit: 7.5, /* 秒。何も倒さず壊さずに泳いだボットのタイム（10.0秒）の約3/4 */ botPath: BOT_3 }),
@@ -1883,7 +2172,7 @@ const STAGE_G9 = courseStage({
 
 const STAGES_GIMMICK = [STAGE_G1, STAGE_G2, STAGE_G3, STAGE_G4, STAGE_G5, STAGE_G6, STAGE_G7, STAGE_G8, STAGE_G9];
 
-// メニューで選べるステージの組。'normal' はいつものステージ（地図の10ステージ）、'gimmick' は新ギミックの9ステージ、'boss' はボス戦だけの4ステージ
+// メニューで選べるステージの組。'normal' はいつものステージ（v102 から手描きの3ステージ）、'gimmick' は新ギミックの9ステージ、'boss' はボス戦だけの4ステージ
 // ボスだけを続けて確かめる組。いつものステージのボス戦（4つ）をそのまま使う（同じステージなので、片方を直せば両方に入る）
 // カニの部屋。地図にまだないので、床の平らな横長の部屋を作る（ボスだけの組にだけ入れる）。
 // 左の通路の口から入り、部屋の床（下の辺）の上をカニが左右に歩く。点は地図の単位（MAP_SCALE で割った値）で作り、mapStage にそのまま渡す
@@ -1919,11 +2208,17 @@ STAGE_KANI.floor = {
   left: mapPoint(KANI_DEF, [CONFIG.KANI_CORRIDOR.x / CONFIG.MAP_SCALE, 0]).x,
   right: mapPoint(KANI_DEF, [(CONFIG.KANI_CORRIDOR.x + CONFIG.KANI_ROOM_SIZE.x) / CONFIG.MAP_SCALE, 0]).x,
 };
-const STAGES_BOSS = STAGES_NORMAL.filter(function (stage) { return stage.type === 'boss'; }).concat([STAGE_KANI]);
+// 「ふつう」の組（v102 から）。手描きの3ステージ。道中は倒さないと時間切れ（制限時間は、何も倒さないボットが部屋の入口に着くタイムの約3/4）
+const STAGES_NORMAL = [
+  sketchStage(SKETCH_1, { label: 'STAGE 1  Shark', bossKind: 'shark', timeLimit: SKETCH_TIME_1 }),
+  sketchStage(SKETCH_2, { label: 'STAGE 2  Puffer', bossKind: 'puffer', timeLimit: SKETCH_TIME_2 }),
+  sketchStage(SKETCH_3, { label: 'STAGE 3  Octopus', bossKind: 'octo', timeLimit: SKETCH_TIME_3 }),
+];
+const STAGES_BOSS = STAGES_MAP_OLD.filter(function (stage) { return stage.type === 'boss'; }).concat([STAGE_KANI]);
 
 const STAGE_SETS = { normal: STAGES_NORMAL, gimmick: STAGES_GIMMICK, boss: STAGES_BOSS };
 // 全部のステージを1列に並べたもの。海藻の並びの種など、ステージごとに違う番号がほしい所で使う
-const ALL_STAGES = STAGES_NORMAL.concat(STAGES_GIMMICK).concat([STAGE_KANI]);
+const ALL_STAGES = STAGES_NORMAL.concat(STAGES_GIMMICK).concat(STAGES_BOSS);
 
 // ボスの胴体の横の半径。種類で違う大きさにできるよう、ここ1か所で決める（ゲームと描画の両方で使うので外に置く）
 // ボスの種類ごとの決まり（体力・大きさの倍率・全長と半径の比・いちばん大きくなった時の倍率）を1か所にまとめる。
@@ -2194,7 +2489,8 @@ function createGame() {
       bagged: false,           // ビニール袋が顔に貼り付いているか
       shake: { lastDir: 0, travel: 0, turns: [] }, // 袋を振りほどくマウスの切り返しの記録
       knock: vec2(0, 0),       // クラゲに跳ね返された勢い（px/秒）。だんだん弱まる
-      ventVel: 0,              // 火山口に押し上げられている速さ（px/秒、上向き）
+      ventVel: 0,              // 火山口に押し上げられている速さ（px/秒）
+      ventDir: -1,             // 火山口に押される向き（-1 上へ / 1 下へ）
       blastVel: vec2(0, 0),    // 噴射口に吹き飛ばされた勢い（px/秒）。BLAST_KNOCK_DECAY でだんだん弱まる
       inCurrent: false,        // 海流の帯の中にいるか
       currentCarry: 0,         // 海流から出た後に持ち越している速さ（海流ぶん）。CURRENT_EXIT_DECAY_TIME で0へ
@@ -3249,7 +3545,12 @@ function createGame() {
         if (p.face !== undefined) {
           face = p.face;
         }
-        return { pivot: vec2(p.x, p.y), face: face, open: 0, phase: 'idle', t: 0, ate: false, alive: true, biteFlash: 0 };
+        // rot は床に伏せた向きから回す角度（v102。天井は π、壁は ±π/2）。置き場所で決めなければ床
+        let rot = 0;
+        if (p.rot !== undefined) {
+          rot = p.rot;
+        }
+        return { pivot: vec2(p.x, p.y), face: face, rot: rot, open: 0, phase: 'idle', t: 0, ate: false, alive: true, biteFlash: 0 };
       }),
       stones: list('stones').map(function (s) {
         return { tri: stoneTriangle(s), base: s.pos, dirDeg: s.dirDeg };
@@ -3260,11 +3561,23 @@ function createGame() {
       bottles: list('bottles').map(function (p) {
         return { pos: vec2(p.x, p.y), alive: true };
       }),
+      // drift：左へ流れてくるか。手描きのステージ（v102）の袋はその場で漂うだけ（流れると壁を抜けてしまうため）
       bags: list('bags').map(function (p, i) {
-        return { pos: vec2(p.x, p.y), home: vec2(p.x, p.y), phase: i * CONFIG.JELLY_PHASE_STEP, alive: true };
+        let drift = true;
+        if (p.drift !== undefined) {
+          drift = p.drift;
+        }
+        return { pos: vec2(p.x, p.y), home: vec2(p.x, p.y), phase: i * CONFIG.JELLY_PHASE_STEP, alive: true, drift: drift };
       }),
       currents: list('currents'),
-      vents: list('vents'),
+      // 火山口（海流口）。dir は噴く向き（-1 上へ / 1 下へ。v102 で天井から下へ噴くものを足した）
+      vents: list('vents').map(function (v) {
+        let d = -1;
+        if (v.dir !== undefined) {
+          d = v.dir;
+        }
+        return { x: v.x, y: v.y, dir: d };
+      }),
       // 噴射口。dir は噴く向き（長さ1）。mode は今の周期の中の段階（'warn' 予告 / 'active' 噴射 / 'rest' 休み）、
       // k はその段階の進み具合（0〜1）。見た目はこの2つだけを読む。hitBurst は最後に吹き飛ばした噴射の番号（1回の噴射で1回だけ当てる）
       blasts: list('blasts').map(function (b) {
@@ -3273,8 +3586,20 @@ function createGame() {
       }),
       blastClock: 0,           // 秒。噴射口の周期を数える時計。ステージの頭から進める
       // ひびの入った壁。当たりは岩と同じ多角形（長方形）で持つ。ひびの線は置いた時に一度だけ作る
+      // size（v102）は壁ごとの厚さと高さ、angle は傾き。置き場所で決めなければ BREAK_WALL_SIZE で傾きなし
       walls: list('walls').map(function (p, i) {
-        return { pos: vec2(p.x, p.y), alive: true, rock: wallRect(p), cracks: wallCracks(p, i) };
+        let size = CONFIG.BREAK_WALL_SIZE;
+        if (p.size !== undefined) {
+          size = p.size;
+        }
+        let angle = 0;
+        if (p.angleDeg !== undefined) {
+          angle = p.angleDeg * DEG;
+        }
+        const w = { pos: vec2(p.x, p.y), size: size, angle: angle, alive: true };
+        w.rock = wallRect(w);
+        w.cracks = wallCracks(w, i);
+        return w;
       }),
       booms: [],               // ビンの爆発の演出。{ pos, t, shards: [{ dir, spin }] }
     };
@@ -3296,27 +3621,34 @@ function createGame() {
     ] };
   }
 
-  // ひびの入った壁の長方形（岩と同じ形式の多角形）
-  function wallRect(p) {
-    const hw = CONFIG.BREAK_WALL_SIZE.x / 2;
-    const hh = CONFIG.BREAK_WALL_SIZE.y / 2;
-    return { points: [vec2(p.x - hw, p.y - hh), vec2(p.x + hw, p.y - hh), vec2(p.x + hw, p.y + hh), vec2(p.x - hw, p.y + hh)] };
+  // ひびの入った壁の長方形（岩と同じ形式の多角形）。壁の真ん中を軸に angle だけ回した、ステージの座標の4つの角
+  function wallRect(w) {
+    const hw = w.size.x / 2;
+    const hh = w.size.y / 2;
+    const c = Math.cos(w.angle);
+    const sn = Math.sin(w.angle);
+    const corner = function (x, y) {
+      return vec2(w.pos.x + x * c - y * sn, w.pos.y + x * sn + y * c);
+    };
+    return { points: [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)] };
   }
 
-  // 壁の面のひび。真ん中あたりから、ぎざぎざに外へ伸びる線を BREAK_WALL_CRACKS 本
-  function wallCracks(p, seed) {
+  // 壁の面のひび。真ん中あたりから、ぎざぎざに外へ伸びる線を BREAK_WALL_CRACKS 本。
+  // 壁の真ん中を原点にした、回す前の座標で作る（描く時に壁と一緒に回す）
+  function wallCracks(w, seed) {
     const rnd = makeRng(CONFIG.SEAWEED_SEED + seed);
     const list = [];
     for (let i = 0; i < CONFIG.BREAK_WALL_CRACKS; i++) {
-      const pts = [vec2(p.x + (rnd() - 0.5) * CONFIG.BREAK_WALL_SIZE.x * 0.3, p.y + (rnd() - 0.5) * CONFIG.BREAK_WALL_SIZE.y * 0.3)];
+      const pts = [vec2((rnd() - 0.5) * w.size.x * 0.3, (rnd() - 0.5) * w.size.y * 0.3)];
       const ang = TAU * i / CONFIG.BREAK_WALL_CRACKS + rnd() * 0.5;
       for (let k = 1; k <= 4; k++) {
         const last = pts[pts.length - 1];
         const a = ang + (rnd() - 0.5) * 1.2;
+        // ひびの1区切りの長さは、元の壁（BREAK_WALL_SIZE）と同じ。高い壁でもひびの細かさが変わらないように
         const step = CONFIG.BREAK_WALL_SIZE.y * 0.09;
         pts.push(vec2(
-          clamp(last.x + Math.cos(a) * step, p.x - CONFIG.BREAK_WALL_SIZE.x / 2, p.x + CONFIG.BREAK_WALL_SIZE.x / 2),
-          last.y + Math.sin(a) * step
+          clamp(last.x + Math.cos(a) * step, -w.size.x / 2, w.size.x / 2),
+          clamp(last.y + Math.sin(a) * step, -w.size.y / 2, w.size.y / 2)
         ));
       }
       list.push(pts);
@@ -3337,13 +3669,12 @@ function createGame() {
   }
 
   // 円（中心 p、半径 r）が、ひびの入った壁の長方形（真ん中 c）に触れているか
-  function circleTouchesRect(p, r, c) {
-    const hw = CONFIG.BREAK_WALL_SIZE.x / 2;
-    const hh = CONFIG.BREAK_WALL_SIZE.y / 2;
-    const qx = clamp(p.x, c.x - hw, c.x + hw);
-    const qy = clamp(p.y, c.y - hh, c.y + hh);
-    return Math.hypot(p.x - qx, p.y - qy) <= r;
+  // 半径 r の円が凸多角形に触れているか。押し出しを写しの点で試すだけで、本物の位置は動かさない
+  function touchesPolygon(p, r, poly) {
+    const probe = vec2(p.x, p.y);
+    return pushOutOfRock(probe, poly, r);
   }
+
 
   // 加速が入った時に、画面全体の風切りの線を SPEED_BURST_TIME 秒流す
   // 速さによるダメージの倍率。基準より遅ければ1倍、上は止めない
@@ -3369,7 +3700,12 @@ function createGame() {
 
   // カブトガニの体の向き（軸から頭への単位ベクトル）。open が0なら地面に沿って頭の側、開くほど上へ起き上がる
   function crabAxis(c) {
-    return vec2(c.face * Math.cos(c.open), -Math.sin(c.open));
+    // 床に伏せた時の向きで求めてから、張り付いている面の向き（rot）だけ回す
+    const lx = c.face * Math.cos(c.open);
+    const ly = -Math.sin(c.open);
+    const cr = Math.cos(c.rot);
+    const sr = Math.sin(c.rot);
+    return vec2(lx * cr - ly * sr, lx * sr + ly * cr);
   }
 
   // カブトガニの体の真ん中
@@ -3429,7 +3765,9 @@ function createGame() {
 
   // 点 p が火山口の噴き上げる範囲（穴の真上の長方形）の中にあるか
   function insideVent(p, v) {
-    return Math.abs(p.x - v.x) <= CONFIG.VENT_SIZE.x / 2 && p.y <= v.y && p.y >= v.y - CONFIG.VENT_SIZE.y;
+    // 穴から噴く向き（dir）へ VENT_SIZE.y の長さの長方形
+    const along = (p.y - v.y) * v.dir;
+    return Math.abs(p.x - v.x) <= CONFIG.VENT_SIZE.x / 2 && along >= 0 && along <= CONFIG.VENT_SIZE.y;
   }
 
   // 噴射口1つの段階を時計から決め、噴射中なら魚との当たりを見る。
@@ -3511,6 +3849,8 @@ function createGame() {
     for (const v of g.vents) {
       if (insideVent(fish.pos, v)) {
         inVent = true;
+        // 押す向きは今いる火山口の向き。範囲から出たあとも、抜けきるまでその向きに押す
+        fish.ventDir = v.dir;
       }
     }
     if (inVent) {
@@ -3518,7 +3858,7 @@ function createGame() {
     } else {
       fish.ventVel = Math.max(fish.ventVel - CONFIG.VENT_DECAY * dt, 0);
     }
-    fish.pos.y -= fish.ventVel * dt;
+    fish.pos.y += fish.ventDir * fish.ventVel * dt;
 
     // 噴射口：周期の段階を進め、噴射中の熱の柱に触れたら噴く向きへ吹き飛ばす（回転中でも防げない。敵には効かない）
     g.blastClock += dt;
@@ -3659,7 +3999,7 @@ function createGame() {
       if (!w.alive) {
         continue;
       }
-      if (isSpinning() && circleTouchesRect(fish.pos, CONFIG.FISH_RADIUS, w.pos)) {
+      if (isSpinning() && touchesPolygon(fish.pos, CONFIG.FISH_RADIUS, w.rock)) {
         breakBreakable(w);
         continue;
       }
@@ -3672,7 +4012,9 @@ function createGame() {
         continue;
       }
       bag.phase += dt;
-      bag.pos.x -= CONFIG.BAG_DRIFT_SPEED * dt;
+      if (bag.drift) {
+        bag.pos.x -= CONFIG.BAG_DRIFT_SPEED * dt;
+      }
       bag.pos.y = bag.home.y + CONFIG.BAG_BOB.y * Math.sin(bag.phase * TAU / CONFIG.BAG_BOB_PERIOD);
       if (!fish.bagged && dist(bag.pos, fish.pos) <= CONFIG.BAG_RADIUS + CONFIG.FISH_RADIUS) {
         bag.alive = false;
@@ -3826,7 +4168,8 @@ function createGame() {
     const halfW = state.viewSize.x / 2 + CONFIG.BREAKABLE_TRIGGER_MARGIN + CONFIG.BREAKABLE_RADIUS;
     const halfH = state.viewSize.y / 2 + CONFIG.BREAKABLE_TRIGGER_MARGIN + CONFIG.BREAKABLE_RADIUS;
     for (const b of state.breakables) {
-      if (!b.alive || b.kind !== 'moving') {
+      // 動くのは迫り岩と動く石だけ
+      if (!b.alive || (b.kind !== 'moving' && b.kind !== 'roll')) {
         continue;
       }
       if (!b.moving) {
@@ -3873,8 +4216,8 @@ function createGame() {
         breakBreakable(b);
         continue;
       }
-      if (b.kind === 'static') {
-        // 壁と同じ。滑って止められるだけ（置き岩にトゲはないので本体だけで押し出す）
+      if (b.kind === 'static' || b.kind === 'roll') {
+        // 壁と同じ（動く石も、トゲがないので止められるだけ）。滑って止められるだけ（置き岩にトゲはないので本体だけで押し出す）
         pushOutOfRock(fish.pos, breakablePolygon(b), CONFIG.FISH_RADIUS);
         continue;
       }
@@ -5933,8 +6276,9 @@ function createGame() {
       if (!state.timeStopped) {
         state.gameTime += gameDt;
       }
-      // 時間制限。ゲーム内時間で減らす（タイムの記録と同じく、ヒットストップ中はほぼ止まる）
-      if (state.timeLeft !== null && state.collapseAt < 0) {
+      // 時間制限。ゲーム内時間で減らす（タイムの記録と同じく、ヒットストップ中はほぼ止まる）。
+      // 道中とボス部屋が1つのステージ（v102）は、部屋の入口がふさがったら止める（ボス戦に時間切れはない）
+      if (state.timeLeft !== null && state.collapseAt < 0 && !state.roomClosed) {
         state.timeLeft -= gameDt;
         // 残りが区切りの秒数を切ったら、画面の真ん中に数字を出す
         while (state.calloutIndex < CONFIG.LIMIT_CALLOUTS.length && state.timeLeft <= CONFIG.LIMIT_CALLOUTS[state.calloutIndex]) {
@@ -8740,27 +9084,32 @@ function createRenderer(game, canvas) {
     }
     // 火山口：床の盛り上がりと、上へのぼる泡の柱
     for (const v of g.vents) {
+      // 穴を原点に、噴く向きが上（-y）になるように置いて描く。下へ噴く火山口（dir = 1）は上下を反転する
+      ctx.save();
+      ctx.translate(v.x, v.y);
+      ctx.scale(1, -v.dir);
       ctx.globalAlpha = CONFIG.CURRENT_DRAW_ALPHA;
       ctx.fillStyle = colors.vent;
-      ctx.fillRect(v.x - CONFIG.VENT_SIZE.x / 2, v.y - CONFIG.VENT_SIZE.y, CONFIG.VENT_SIZE.x, CONFIG.VENT_SIZE.y);
+      ctx.fillRect(-CONFIG.VENT_SIZE.x / 2, -CONFIG.VENT_SIZE.y, CONFIG.VENT_SIZE.x, CONFIG.VENT_SIZE.y);
       ctx.globalAlpha = 1;
       ctx.fillStyle = colors.rockBase;
       ctx.beginPath();
-      ctx.moveTo(v.x - CONFIG.VENT_SIZE.x, v.y + CONFIG.VENT_MOUND.y);
-      ctx.lineTo(v.x - CONFIG.VENT_MOUND.x, v.y);
-      ctx.lineTo(v.x + CONFIG.VENT_MOUND.x, v.y);
-      ctx.lineTo(v.x + CONFIG.VENT_SIZE.x, v.y + CONFIG.VENT_MOUND.y);
+      ctx.moveTo(-CONFIG.VENT_SIZE.x, CONFIG.VENT_MOUND.y);
+      ctx.lineTo(-CONFIG.VENT_MOUND.x, 0);
+      ctx.lineTo(CONFIG.VENT_MOUND.x, 0);
+      ctx.lineTo(CONFIG.VENT_SIZE.x, CONFIG.VENT_MOUND.y);
       ctx.closePath();
       ctx.fill();
       ctx.fillStyle = colors.vent;
       for (let i = 0; i < CONFIG.VENT_BUBBLES; i++) {
         const k = ((t * CONFIG.VENT_BUBBLE_SPEED / CONFIG.VENT_SIZE.y) + i / CONFIG.VENT_BUBBLES) % 1;
-        const bx = v.x + Math.sin(i * 2.3 + t * 3) * CONFIG.VENT_SIZE.x * 0.3;
-        const by = v.y - k * CONFIG.VENT_SIZE.y;
+        const bx = Math.sin(i * 2.3 + t * 3) * CONFIG.VENT_SIZE.x * 0.3;
+        const by = -k * CONFIG.VENT_SIZE.y;
         ctx.beginPath();
         ctx.arc(bx, by, CONFIG.VENT_BUBBLE_RADIUS, 0, TAU);
         ctx.fill();
       }
+      ctx.restore();
     }
     // 噴射口：予告中は口が赤く光って震え、噴く範囲がうっすら見える。噴射中は熱の柱が出て、終わりに向けて薄くなる
     // 熱の柱は泳げる場所の中だけに描く（斜めの柱の角が壁の中にはみ出して見えないように）
@@ -8826,13 +9175,17 @@ function createRenderer(game, canvas) {
       if (!w.alive) {
         continue;
       }
-      const hw = CONFIG.BREAK_WALL_SIZE.x / 2;
-      const hh = CONFIG.BREAK_WALL_SIZE.y / 2;
+      // 壁の真ん中を原点に、傾きだけ回して描く
+      const hw = w.size.x / 2;
+      const hh = w.size.y / 2;
+      ctx.save();
+      ctx.translate(w.pos.x, w.pos.y);
+      ctx.rotate(w.angle);
       ctx.fillStyle = colors.rockLight;
-      ctx.fillRect(w.pos.x - hw, w.pos.y - hh, hw * 2, hh * 2);
+      ctx.fillRect(-hw, -hh, hw * 2, hh * 2);
       ctx.strokeStyle = colors.rockDark;
       ctx.lineWidth = 6;
-      ctx.strokeRect(w.pos.x - hw, w.pos.y - hh, hw * 2, hh * 2);
+      ctx.strokeRect(-hw, -hh, hw * 2, hh * 2);
       ctx.lineWidth = 5;
       for (const crack of w.cracks) {
         ctx.beginPath();
@@ -8842,6 +9195,7 @@ function createRenderer(game, canvas) {
         }
         ctx.stroke();
       }
+      ctx.restore();
     }
     // ビンの爆発：広がって薄くなるオレンジの輪と光、外へ飛ぶ破片
     for (const boom of g.booms) {
@@ -8885,6 +9239,8 @@ function createRenderer(game, canvas) {
       const H = CONFIG.CRAB_SIZE.y;
       ctx.save();
       ctx.translate(c.pivot.x, c.pivot.y);
+      // 張り付いている面の向きに回す（床なら0）
+      ctx.rotate(c.rot);
       // 頭の向きに合わせて左右を反転してから、起き上がる角度だけ回す（反転したあとの -open は、見た目で地面から上へ開く向き）
       ctx.scale(c.face, 1);
       ctx.rotate(-c.open);
