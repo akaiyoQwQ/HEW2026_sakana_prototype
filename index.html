@@ -189,6 +189,39 @@
   }
   .title-choice:hover { background: rgba(255, 255, 255, 0.16); }
   .title-menu .title-choice { width: 100%; text-align: left; }
+  .title-menu[hidden] { display: none; }
+  /* ステージの一覧（v104）。組を選ぶと、組のボタンの代わりに出る。列の数はスクリプトから STAGE_SELECT_COLS で決める */
+  .stage-grid { display: grid; gap: 8px; margin-top: 16px; }
+  .stage-grid[hidden] { display: none; }
+  .stage-grid .title-choice { font-size: 14px; padding: 8px 12px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+  .stage-grid .title-choice.current { background: rgba(255, 255, 255, 0.18); }
+  .stage-grid .back { border-color: var(--muted); color: var(--muted); }
+  /* プレイ中のステージセレクト（v104）。開いている間はゲームを止める */
+  .stage-select {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(4, 19, 27, 0.75);
+    z-index: 30;
+  }
+  .stage-select[hidden] { display: none; }
+  .stage-select .panel {
+    width: 100%;
+    max-width: 640px;
+    max-height: 100%;
+    overflow-y: auto;
+    background: rgba(4, 19, 27, 0.92);
+    border: 1px solid var(--goal);
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .stage-select h2 { margin: 0 0 12px; font-size: 18px; font-weight: normal; color: var(--goal); }
+  .stage-select .tabs { display: flex; gap: 6px; }
+  .stage-select .tabs .toggle { min-width: 0; }
+  .stage-select .hint { color: var(--muted); font-size: 13px; margin-top: 12px; }
   /* 設定の欄。ON / OFF はボタンを押すたびに切り替わる。ON の時は枠と文字を明るくする */
   .settings { margin-top: 14px; display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; cursor: default; }
   .settings .name { color: var(--muted); font-size: 14px; }
@@ -376,6 +409,7 @@
       <button class="toggle" id="hudSpinToggle" type="button">回転 ON</button>
       <button class="toggle" id="hudDriftToggle" type="button">ドリフト ON</button>
       <button class="toggle" id="hudCursorToggle" type="button">カーソル ON</button>
+      <button class="toggle" id="hudStageButton" type="button">ステージ</button>
     </div>
   </div>
 </div>
@@ -383,6 +417,15 @@
 
 <div class="countdown" id="countdown" hidden></div>
 <div class="cursor-ring" id="cursorRing" hidden><div class="fill"></div></div>
+<!-- プレイ中のステージセレクト（v104）。Esc か右上の「ステージ」で開く。タブとステージのボタンはスクリプトで作る -->
+<div class="stage-select" id="stageSelect" hidden>
+  <div class="panel">
+    <h2>ステージセレクト</h2>
+    <div class="tabs" id="selectTabs"></div>
+    <div class="stage-grid" id="selectStages"></div>
+    <div class="hint">数字キーで選ぶ ／ Esc で閉じて続きから</div>
+  </div>
+</div>
 <div class="death-text" id="deathText" hidden></div>
 <div class="limit-callout" id="limitCallout" hidden></div>
 
@@ -412,12 +455,14 @@
       <div class="title-col">
         <h1 id="titleName">鮮度限界突破</h1>
         <p>勝手に前へ泳ぐ魚を操って、敵の群れを突っ切りながら進もう。全3ステージ。水路を抜けた先の部屋で待つ大物を倒せばクリア。部屋に着くまでは制限時間があり、敵を倒したり岩を壊したりすると時間が延びる。間に合わないと水路が崩れてやり直し。部屋に入ったら時間は止まる。タイムが短いほどいい記録。</p>
-        <div class="title-menu">
+        <div class="title-menu" id="titleSets">
           <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全3）</button>
           <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全9）</button>
           <button class="title-choice" id="choiceBoss" type="button"><span class="key">3</span>　ボスだけ（全5）</button>
         </div>
-        <div class="title-start" id="titleStart">クリックか 1 / 2 / 3 キーで選んでスタート</div>
+        <!-- 組を選んだ後のステージの一覧。中のボタンはスクリプトで作る -->
+        <div class="stage-grid" id="titleStages" hidden></div>
+        <div class="title-start" id="titleStart">クリックか 1 / 2 / 3 キーで組を選ぶ</div>
       </div>
       <!-- 右の列：設定と操作の説明 -->
       <div class="title-col">
@@ -442,7 +487,7 @@
           <li><span class="key">マウス右クリック</span>：<span class="key">回転アタック</span>（どの向きから当たっても敵を倒せて、倒すたびにさらに加速）</li>
           <li><span class="key">マウス左ボタン</span>または<span class="key">スペース</span>を押している間：<span class="key">ドリフト</span>（押した時の向きのまま減速しながら滑り、その間は頭の向きだけを変えられる。チャージがたまる。離すと頭の向きへ進み、チャージ完了なら一気に加速して黄色い回転アタックが出る）</li>
           <li>正面からぶつかれば、ふつうの体当たりでも倒せる。横や後ろから触れると被弾して減速</li>
-          <li><span class="key">R</span>：やり直し</li>
+          <li><span class="key">R</span>：やり直し ／ <span class="key">Esc</span>：ステージセレクト（止めて選び直す）</li>
         </ul>
       </div>
     </div>
@@ -761,6 +806,8 @@ const CONFIG = {
   COUNTDOWN_POP_SCALE: 1.6,     // 倍。数字が出た瞬間の大きさ。ここから1倍に縮んで落ち着く
 
   // ===== 説明画面（ページを開いた最初だけ出す） =====
+  STAGE_SELECT_COLS: 2,         // 列。ステージセレクトの一覧を何列に並べるか（メニューとプレイ中の両方）
+  STAGE_SELECT_KEY: 'Escape',   // プレイ中にステージセレクトを開く・閉じるキー（KeyboardEvent.code）
   TITLE_BLINK_PERIOD: 1.0,      // 秒。「なにかキーを押してスタート」が1回点滅する周期
   TITLE_DIM: 0.6,               // 説明画面の後ろのステージを暗くする濃さ。0で暗くしない、1で真っ黒
 
@@ -3184,12 +3231,17 @@ function createGame() {
   // 説明画面を閉じて、スタート演出を始める。
   // スタートに使ったキーはゲームの入力として数えないよう、押している方向を空にしておく
   // setName はメニューで選んだステージの組（'normal' か 'gimmick'）。選んだ組の最初のステージから始める
-  function startFromTitle(setName) {
+  // index はその組の何番目から始めるか（v104 のステージセレクト。省くと最初から）
+  function startFromTitle(setName, index) {
     if (!state.title) {
       return;
     }
+    let start = 0;
+    if (index !== undefined) {
+      start = index;
+    }
     state.stageSet = setName;
-    state.stageIndex = 0;
+    state.stageIndex = start;
     state.stageTimes = [];
     state.stageRanks = [];
     state.transition = null;
@@ -3198,6 +3250,35 @@ function createGame() {
     reset();
     state.title = false;
     state.heldDirs = {};
+  }
+
+  // プレイ中のステージセレクトで選んだステージから始め直す（v104）。組も変えられる。
+  // 組や場所が変わるので、それまでの記録は消す。スタート演出はいつものもの
+  function selectStage(setName, index) {
+    state.stageSet = setName;
+    state.stageIndex = index;
+    state.stageTimes = [];
+    state.stageRanks = [];
+    state.transition = null;
+    state.introPaused = false;
+    state.quickIntro = false;
+    state.paused = false;
+    reset();
+    state.heldDirs = {};
+  }
+
+  // 一時停止（v104。プレイ中のステージセレクトを開いている間）。止めている間は update が何も進めない
+  function setPaused(on) {
+    state.paused = on;
+    // 止めた瞬間に押していたキーやボタンを離した扱いにして、再開した時に押しっぱなしにならないようにする
+    state.heldDirs = {};
+    keyUp(CONFIG.DRIFT_KEY);
+    mouseUp(CONFIG.MOUSE_DRIFT_BUTTON);
+  }
+
+  // 組の名前から、その組のステージの一覧
+  function stagesOf(setName) {
+    return STAGE_SETS[setName];
   }
 
   // 全部クリアしたあとの R。メニュー（説明画面）に戻って、ステージの組を選び直せるようにする
@@ -3243,7 +3324,7 @@ function createGame() {
   }
 
   function keyDown(code) {
-    if (state.title) {
+    if (state.title || state.paused) {
       // 説明画面の間はゲームの入力として扱わない（閉じる処理は外側でする）
       return;
     }
@@ -3280,7 +3361,8 @@ function createGame() {
 
   // マウスのボタンを押した瞬間。ドリフトか回転アタックのボタンなら出す
   function mouseDown(button) {
-    if (state.title) {
+    // 一時停止中（ステージセレクトを開いている間）も受け付けない
+    if (state.title || state.paused) {
       return;
     }
     if (state.intro) {
@@ -6290,6 +6372,10 @@ function createGame() {
 
   // 1フレームぶん進める。realDt は実時間の経過
   function update(realDt) {
+    // 一時停止中は時間も演出も進めない（描画は止まった絵のまま続ける）
+    if (state.paused) {
+      return;
+    }
     if (realDt > CONFIG.MAX_FRAME_DT) {
       realDt = CONFIG.MAX_FRAME_DT;
     }
@@ -6383,6 +6469,7 @@ function createGame() {
   reset();
   // 説明画面はページを開いた最初だけ。R の reset() では戻さないので、ここで1回だけ立てる
   state.title = true;
+  state.paused = false;   // 一時停止中か（v104。プレイ中のステージセレクトを開いている間）
 
   return {
     state: state,
@@ -6412,6 +6499,9 @@ function createGame() {
     killFxDuration: killFxDuration,
     onSettingsChanged: onSettingsChanged,
     startFromTitle: startFromTitle,
+    selectStage: selectStage,
+    setPaused: setPaused,
+    stagesOf: stagesOf,
     stageList: stageList,
     mouseShake: mouseShake,
     skipIntro: skipIntro,
@@ -9556,12 +9646,141 @@ function start() {
   const titleStart = document.getElementById('titleStart');
   titleScreen.style.background = 'rgba(4, 19, 27, ' + CONFIG.TITLE_DIM + ')';
   titleStart.style.animationDuration = CONFIG.TITLE_BLINK_PERIOD + 's';
-  // setName はステージの組（'normal' か 'gimmick'）
-  function closeTitle(setName) {
-    game.startFromTitle(setName);
+  // setName はステージの組（'normal' / 'gimmick' / 'boss'）、index はその組の何番目から始めるか
+  function closeTitle(setName, index) {
+    game.startFromTitle(setName, index);
     titleScreen.hidden = true;
     updateCursorRing();
   }
+
+  // ===== ステージセレクト（v104） =====
+  const SET_NAMES = ['normal', 'gimmick', 'boss'];
+  const SET_LABELS = { normal: 'いつもの', gimmick: '新ギミック', boss: 'ボスだけ' };
+  // ボタンを押した時の共通の受け方。押したことをキャンバスやメニューの外側に伝えない（回転やドリフトが出ないように）
+  function onPress(button, action) {
+    button.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      action();
+    });
+    button.addEventListener('mousedown', function (e) {
+      e.stopPropagation();
+    });
+    button.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+    });
+  }
+  // grid の中を、組 setName のステージのボタンで作り直す。ボタンには 1 からの番号を付ける。
+  // current は今遊んでいるステージの番号（目立たせる。なければ -1）。back があれば最後に「戻る」ボタンを足す
+  function fillStageGrid(grid, setName, current, onPick, back) {
+    grid.innerHTML = '';
+    grid.style.gridTemplateColumns = 'repeat(' + CONFIG.STAGE_SELECT_COLS + ', 1fr)';
+    const list = game.stagesOf(setName);
+    for (let i = 0; i < list.length; i++) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'title-choice';
+      if (i === current) {
+        b.classList.add('current');
+      }
+      b.innerHTML = '<span class="key">' + (i + 1) + '</span>　' + list[i].label;
+      onPress(b, function () { onPick(i); });
+      grid.appendChild(b);
+    }
+    if (back) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'title-choice back';
+      b.innerHTML = '<span class="key">Esc</span>　戻る';
+      onPress(b, back);
+      grid.appendChild(b);
+    }
+  }
+  // 数字キー（1〜9）から 0 からの番号へ。数字でなければ -1
+  function digitIndex(code) {
+    const m = /^(?:Digit|Numpad)([1-9])$/.exec(code);
+    if (m === null) {
+      return -1;
+    }
+    return Number(m[1]) - 1;
+  }
+
+  // メニュー：組 → ステージの2段。titleSet が null の間は組を選ぶ画面、組を選ぶとその組のステージの一覧
+  const titleMenu = document.getElementById('titleSets');
+  const titleStages = document.getElementById('titleStages');
+  let titleSet = null;
+  function showTitleSets() {
+    titleSet = null;
+    titleMenu.hidden = false;
+    titleStages.hidden = true;
+    titleStart.textContent = 'クリックか 1 / 2 / 3 キーで組を選ぶ';
+  }
+  function showTitleStages(setName) {
+    titleSet = setName;
+    titleMenu.hidden = true;
+    titleStages.hidden = false;
+    fillStageGrid(titleStages, setName, -1, function (i) { closeTitle(setName, i); }, showTitleSets);
+    titleStart.textContent = SET_LABELS[setName] + '：クリックか数字キーで始めるステージを選ぶ';
+  }
+
+  // プレイ中のステージセレクト。開いている間はゲームを止める
+  const stageSelect = document.getElementById('stageSelect');
+  const selectTabs = document.getElementById('selectTabs');
+  const selectStages = document.getElementById('selectStages');
+  let selectSet = 'normal';
+  function fillSelect() {
+    selectTabs.innerHTML = '';
+    for (const name of SET_NAMES) {
+      const t = document.createElement('button');
+      t.type = 'button';
+      t.className = 'toggle';
+      if (name === selectSet) {
+        t.classList.add('on');
+      }
+      t.textContent = SET_LABELS[name];
+      onPress(t, function () {
+        selectSet = name;
+        fillSelect();
+      });
+      selectTabs.appendChild(t);
+    }
+    let current = -1;
+    if (selectSet === game.state.stageSet) {
+      current = game.state.stageIndex;
+    }
+    fillStageGrid(selectStages, selectSet, current, pickFromSelect, null);
+  }
+  function openSelect() {
+    if (game.state.title || !stageSelect.hidden) {
+      return;
+    }
+    selectSet = game.state.stageSet;
+    fillSelect();
+    stageSelect.hidden = false;
+    game.setPaused(true);
+    cursorState.held = false;
+    updateCursorRing();
+  }
+  function closeSelect() {
+    stageSelect.hidden = true;
+    game.setPaused(false);
+    updateCursorRing();
+  }
+  function pickFromSelect(i) {
+    stageSelect.hidden = true;
+    game.selectStage(selectSet, i);
+    updateCursorRing();
+  }
+  // 小窓の外（暗い所）を押したら閉じて続きから。小窓の中を押しても閉じない
+  stageSelect.addEventListener('pointerdown', function (e) {
+    e.stopPropagation();
+    if (e.target === stageSelect) {
+      closeSelect();
+    }
+  });
+  stageSelect.addEventListener('mousedown', function (e) {
+    e.stopPropagation();
+  });
 
   // ===== マウスの位置の輪 =====
   // 見た目の大きさは CONFIG から入れる（CSS に数字を書かない）
@@ -9576,7 +9795,7 @@ function start() {
   const cursorState = { x: 0, y: 0, known: false, held: false };
   function updateCursorRing() {
     // 出すのは、遊んでいる間（メニューではない）・設定が ON・マウスを一度でも動かした時だけ
-    const show = SETTINGS.cursor && cursorState.known && !game.state.title;
+    const show = SETTINGS.cursor && cursorState.known && !game.state.title && stageSelect.hidden;
     cursorRing.hidden = !show;
     canvas.classList.toggle('hide-cursor', show);
     if (!show) {
@@ -9696,16 +9915,17 @@ function start() {
   // メニューのボタン。クリックやタップで選ぶ
   document.getElementById('choiceNormal').addEventListener('pointerdown', function (e) {
     e.preventDefault();
-    closeTitle('normal');
+    showTitleStages('normal');
   });
   document.getElementById('choiceGimmick').addEventListener('pointerdown', function (e) {
     e.preventDefault();
-    closeTitle('gimmick');
+    showTitleStages('gimmick');
   });
   document.getElementById('choiceBoss').addEventListener('pointerdown', function (e) {
     e.preventDefault();
-    closeTitle('boss');
+    showTitleStages('boss');
   });
+  onPress(document.getElementById('hudStageButton'), openSelect);
 
   window.addEventListener('keydown', function (e) {
     if (e.repeat) {
@@ -9720,17 +9940,41 @@ function start() {
       if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key)) {
         return;
       }
-      // 説明画面（メニュー）では 1 / 2 / 3 で選ぶ。ほかのキーは何もしない（R などとしても扱わない）
+      // 説明画面（メニュー）では、組を 1 / 2 / 3 で選び、次にステージを数字で選ぶ。Esc で組の選び直し。
+      // ほかのキーは何もしない（R などとしても扱わない）
       e.preventDefault();
-      if (e.code === 'Digit1' || e.code === 'Numpad1') {
-        closeTitle('normal');
+      const n = digitIndex(e.code);
+      if (titleSet === null) {
+        if (n >= 0 && n < SET_NAMES.length) {
+          showTitleStages(SET_NAMES[n]);
+        }
+        return;
       }
-      if (e.code === 'Digit2' || e.code === 'Numpad2') {
-        closeTitle('gimmick');
+      if (e.code === CONFIG.STAGE_SELECT_KEY) {
+        showTitleSets();
+        return;
       }
-      if (e.code === 'Digit3' || e.code === 'Numpad3') {
-        closeTitle('boss');
+      if (n >= 0 && n < game.stagesOf(titleSet).length) {
+        closeTitle(titleSet, n);
       }
+      return;
+    }
+    // プレイ中のステージセレクト。開いている間は、数字で選ぶ・Esc で閉じる以外のキーをゲームに渡さない
+    if (!stageSelect.hidden) {
+      e.preventDefault();
+      if (e.code === CONFIG.STAGE_SELECT_KEY) {
+        closeSelect();
+        return;
+      }
+      const n = digitIndex(e.code);
+      if (n >= 0 && n < game.stagesOf(selectSet).length) {
+        pickFromSelect(n);
+      }
+      return;
+    }
+    if (e.code === CONFIG.STAGE_SELECT_KEY) {
+      e.preventDefault();
+      openSelect();
       return;
     }
     if (KEY_TO_DIR[e.code] || e.code === CONFIG.DRIFT_KEY) {
@@ -9810,9 +10054,13 @@ function start() {
   function updateHud() {
     const s = game.state;
     // 全部クリアしたあとの R でメニューに戻った時に、説明画面をまた出す
+    // メニューに戻った瞬間は、組を選ぶ画面から見せる（前に開いていたステージの一覧のままにしない）
+    if (s.title && titleScreen.hidden) {
+      showTitleSets();
+    }
     titleScreen.hidden = !s.title;
     // メニューに戻った時は輪を消し、ふつうの矢印に戻す（その時の状態に合わせ直すだけなので毎フレームでも軽い）
-    if (cursorRing.hidden !== !(SETTINGS.cursor && cursorState.known && !s.title)) {
+    if (cursorRing.hidden !== !(SETTINGS.cursor && cursorState.known && !s.title && stageSelect.hidden)) {
       updateCursorRing();
     }
     hudTime.textContent = s.gameTime.toFixed(2);
