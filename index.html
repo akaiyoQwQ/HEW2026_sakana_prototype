@@ -73,6 +73,9 @@
     --rock-base: #3b3b40;   /* ステージの外の岩。地の色 */
     --rock-light: #56565c;  /* 岩。石の明るい縁 */
     --spike-tip: #e8442e;   /* 迫り岩のトゲの先。触ると痛いと一目で分かる赤 */
+    --urchin-body: #3a284e; /* ウニ（v106）の体。水の青と岩の灰色のどちらからも浮いて見える濃い紫 */
+    --urchin-light: #60467c; /* ウニの体の明るい所 */
+    --urchin-spine: #241a32; /* ウニのトゲの根元 */
     --rock-crack: #f2d9a0;  /* ひび割れ岩のひび。中から光が漏れているように見せる明るい色 */
     --rock-dark: #232326;   /* 岩。石の暗い縁とひび、水との境目の縁取り */
     --score-fill: #ffd166;  /* スコアゲージの残っている部分 */
@@ -459,10 +462,11 @@
           <button class="title-choice" id="choiceNormal" type="button"><span class="key">1</span>　いつものステージ（全3）</button>
           <button class="title-choice" id="choiceGimmick" type="button"><span class="key">2</span>　新ギミックのステージ（全9）</button>
           <button class="title-choice" id="choiceBoss" type="button"><span class="key">3</span>　ボスだけ（全5）</button>
+          <button class="title-choice" id="choiceFresh" type="button"><span class="key">4</span>　新ステージ組（全1）</button>
         </div>
         <!-- 組を選んだ後のステージの一覧。中のボタンはスクリプトで作る -->
         <div class="stage-grid" id="titleStages" hidden></div>
-        <div class="title-start" id="titleStart">クリックか 1 / 2 / 3 キーで組を選ぶ</div>
+        <div class="title-start" id="titleStart">クリックか 1〜4 キーで組を選ぶ</div>
       </div>
       <!-- 右の列：設定と操作の説明 -->
       <div class="title-col">
@@ -867,6 +871,12 @@ const CONFIG = {
   // カジキの絵を変えてもサメが自動でついてくるようにするため。計算は sharkRadius()
   BOSS_SIZE_TO_PLAYER: 4,       // 倍。ボスの全長（尾の先から鼻先まで）が、カジキの全長の何倍か。今はサメだけに使う
   SHARK_TAIL_LENGTH_RATIO: 1.7, // 胴の横の半径に対する、中心から尾びれの先までの長さ。全長＝半径×(1＋これ)
+  SKETCH_B_SCALE: 7.5,          // px。新ステージ組（v106）の絵の 1 単位（横 2560 にした絵の 1 ピクセル）あたりのゲームの長さ。最初の直線の幅（絵で 62）が、いつものステージ1の最初の通路（約 450px）と同じくらいになる値
+  SKETCH_B_MIN_WIDTH: 300,      // px。新ステージ組の通路の一番細い幅。絵のままだと細い通路（絵で 13 → 約 100px）を魚と雑魚が通れないので、ここまで左右に広げる
+  SKETCH_B_RESAMPLE: 60,        // px。広げる前に壁の線へ点を足す間隔。長い直線の途中でも広げられるように
+  SKETCH_B_WIDEN_PASSES: 3,     // 回。広げる処理をくり返す回数。曲がり角で一度に合わない所を合わせる
+  SKETCH_B_BOT_STRIDE: 4,       // 個。検証用のボットの通り道を作る時に、上の壁の点を何個おきに使うか
+  SKETCH_B_TIME_RATE: 2.5,      // 倍。新ステージ組の制限時間 = 何も倒さないボットのタイム × これ。ゲージ（＝のこり時間）の減り方も割合でゆるくなる
   SKETCH_SCALE: 45,             // px。手描きのステージ設計（v102）の絵の 1 ピクセルあたりのゲームの長さ。通路の太さ（絵の上で 8〜10）が、それまでの道幅 380px くらいになる値
   SKETCH_BAR_CRAB_FACE: -1,     // 浮いた棒に張り付くカブトガニの頭の向き（-1 左 / 1 右）
   BOSS_ROOM_SCALE: 2,           // 倍。ボスの部屋（地図の部屋）を、入口の線の真ん中を軸にこの倍率で奥へ広げる。入口と通路はそのまま
@@ -1100,6 +1110,33 @@ const CONFIG = {
   BAG_DRAW_ALPHA: 0.75,         // 袋の濃さ
   BREAK_WALL_SIZE: vec2(120, 460), // px。ひびの入った壁の厚さと高さ。道幅より少し高くして、上下を壁にめり込ませる
   BREAK_WALL_CRACKS: 6,         // 本。壁の面に描くひびの線の数
+  URCHIN_RADIUS: 50,            // px。ウニ（v106）の体の半径
+  URCHIN_SPINE_COUNT: 16,       // 本。ウニのトゲの数（壁に埋まった側のトゲは描かない）
+  URCHIN_SPINE_LENGTH: 26,      // px。トゲの長さ（体の縁から先まで）。1本ずつ ±URCHIN_SPINE_JITTER の割合でばらつく
+  URCHIN_SPINE_JITTER: 0.15,    // 割合。トゲの長さのばらつき
+  URCHIN_SPINE_WIDTH: 0.22,     // 割合。トゲの根元の半分の太さ（体の半径に対する割合）
+  URCHIN_SPINE_ROOT: 0.85,      // 倍。トゲの根元を体の中心からどこに置くか（体の半径に対する割合）。1 より少し内側にして、体との間にすき間を作らない
+  URCHIN_SPINE_TIP_RATIO: 0.4,  // 割合。トゲの先から何割を危ない色（--spike-tip）で塗るか。突石のトゲ（SPIKE_TIP_RATIO）と同じ
+  URCHIN_HIT_SPINE_RATIO: 0.5,  // 割合。当たりの半径 = 体の半径 + トゲの長さ × これ。トゲの先に少しかすっただけでは当たらない
+  URCHIN_WALL_OUT: 0,           // 倍。壁に張り付けるウニの中心を、壁から水の側へ体の半径の何倍出すか。0 で体の半分が壁に埋まる
+  URCHIN_WALL_HIDE: -0.2,       // 壁に張り付けたウニで、壁の向き（水の側）との内積がこれより小さいトゲは描かない（壁に埋まっている）
+  URCHIN_HIGHLIGHT: vec2(-0.32, -0.45), // 倍。体の明るい所の中心（体の半径に対する位置）
+  URCHIN_HIGHLIGHT_SIZE: vec2(0.28, 0.25), // 倍。体の明るい所の横と縦の半径（体の半径に対する割合）
+  URCHIN_SEED: 31,              // トゲのばらつきの乱数の種
+  GOAL_WALL_THICKNESS: 160,     // px。ゴールの壁（v106。突き破るとクリア）の厚さ
+  GOAL_WALL_BURY: 60,           // px。ゴールの壁の両端を、上下の壁に埋める長さ。すき間ができないように
+  GOAL_RUNOUT: 1200,            // px。ゴールの壁の向こうに延ばす通路の長さ。突き抜けた魚が泳いでいく所。0 で延ばさない
+  GOAL_BREAK_HITSTOP: 0.5,      // 秒。突き破った瞬間のヒットストップ。回転で倒した時（HITSTOP_SPIN）の2倍
+  GOAL_BREAK_SHAKE: 60,         // px。突き破った時の画面の揺れの幅。ボスを倒した時（BOSS_DEATH_SHAKE）より大きい
+  GOAL_BREAK_SHAKE_TIME: 0.8,   // 秒。揺れが収まるまで
+  GOAL_BREAK_FLASH: 0.12,       // 秒。突き破った瞬間に画面全体が白く光る時間
+  GOAL_DEBRIS_COUNT: 60,        // 個。飛び散る破片の数。岩を壊した時（BREAKABLE_DEBRIS_COUNT）の2.5倍
+  GOAL_DEBRIS_SPEED: 900,       // px/秒。破片の飛び出す速さ（ばらつきあり）。魚の進む向きへ寄せて飛ばす
+  GOAL_DEBRIS_SPREAD_DEG: 70,   // 度。破片が飛ぶ向きのばらつき（魚の進む向きから左右に）
+  GOAL_DEBRIS_SIZE: 28,         // px。破片の大きさ（ばらつきあり）
+  GOAL_DEBRIS_LIFETIME: 1.2,    // 秒。破片が消えるまで
+  GOAL_DUST_RADIUS: 320,        // px。突き破った瞬間に広がる土ぼこりの輪の大きさ
+  GOAL_CLEAR_DELAY: 1.0,        // 秒（実時間）。突き破ってからクリア表示を出すまで。ヒットストップと揺れを見せる間
   BOTTLE_BOOM_RADIUS: 160,      // px。ビンが爆発した時の光の輪の大きさ
   BOTTLE_BOOM_TIME: 0.4,        // 秒。爆発の演出の長さ
   BOTTLE_BOOM_SHAKE: 14,        // px。爆発の画面の揺れ
@@ -2089,6 +2126,196 @@ function sketchStage(def, opts) {
   return stage;
 }
 
+// ===== 新ステージ組（v106 から。どりゃどりゃさんの手描きの「ステージ1」をそのまま写した組） =====
+// 絵は上の壁と下の壁の2本の線で描かれた通路なので、2本の線をそのまま持つ。数字は絵（横 2560 にした単位）の上の座標。
+// SKETCH_B_SCALE を掛けてゲームの座標にし、細すぎる所は SKETCH_B_MIN_WIDTH まで左右に広げる。
+// 最後は ⊗ の位置にゴールの壁（突き破るとクリア）を立て、その向こうに GOAL_RUNOUT だけ通路を延ばす
+const SKETCH_B1 = {
+  start: [237, 233],
+  startDeg: 0,
+  // 上の壁（進む向きの左手側）と下の壁（右手側）。どちらもスタート側の端からゴール側の端へ
+  top: [[110, 202.5], [200, 203], [300, 205], [400, 205.6], [460, 206.8], [469.4, 210], [481.6, 218.6], [499, 227.3], [513.7, 229], [521.5, 222], [538.9, 215], [551, 212.5], [573.6, 212.5], [599.7, 218.6], [620.5, 230.8], [636, 246.4], [644.8, 258.5], [650, 261], [660.4, 264.6], [669, 264.6], [679.5, 260.3], [690, 253.3], [700.3, 239.4], [709, 233], [729.5, 232.2], [740, 234.3], [757.3, 238.6], [769.4, 241.2], [804, 239.5], [856, 239.5], [908.3, 238.6], [931, 236.5], [946.5, 230.8], [964, 230.8], [1002, 231.7], [1060.8, 231.8], [1072.9, 234.7], [1088.5, 245.1], [1097.2, 253], [1112.8, 258.2], [1128.5, 261.6], [1137.2, 257.3], [1152.8, 241.7], [1170, 235.6], [1199.7, 235.6], [1225.7, 239.6], [1251.7, 241.7], [1272.6, 246.5], [1281.3, 253.8], [1291.7, 266.8], [1299.8, 270.7], [1321.8, 272.4], [1360, 272.4], [1377.4, 277], [1400.5, 288.6], [1417.9, 301.4], [1435.3, 321], [1445.7, 348.8], [1449.2, 367.4], [1449.2, 399.8], [1441, 413.7], [1426, 427.6], [1400.5, 441.5], [1386.5, 448], [1352.6, 453.9], [1301, 464.2], [1279, 473], [1264, 486.3], [1261.3, 501], [1260.5, 518.7], [1264.2, 532], [1279, 548.2], [1301, 558.5], [1337.9, 568.8], [1367.4, 575.5], [1396.8, 577.7], [1441, 576.2], [1470.5, 576.2], [1482.3, 570.3], [1488.4, 565.5], [1498.5, 547], [1513.7, 537.7], [1535.6, 535.5], [1564.2, 535.5], [1576, 539.4], [1594.5, 543.6], [1648.4, 543.6], [1658.5, 541.9], [1704, 540.5], [1709, 541.9], [1800, 542.7], [1879.4, 542.7], [1897.9, 544.4], [1982, 541.9], [2049.5, 541.6], [2066.3, 544.4], [2100, 545], [2128.8, 546.4], [2189.5, 547], [2209.7, 549], [2240, 550.3], [2278.7, 550], [2315.8, 551.7], [2320.8, 554.5], [2400.2, 555.4], [2439, 555.7], [2451, 557.8], [2469.2, 559.3], [2506.8, 561.5]],
+  bottom: [[110, 264.5], [200, 264.5], [300, 265.5], [400, 263.7], [469.4, 263.2], [483.3, 271.6], [499, 279.4], [511, 283.7], [535.4, 283.7], [549.3, 278.5], [559.7, 271.6], [568.4, 260.3], [578.8, 250.2], [598, 249.9], [613.5, 260.3], [624, 269.8], [650, 282.8], [665.6, 289.8], [684.7, 290.7], [700.3, 285.5], [708.7, 281], [714, 271.6], [720.8, 263], [731, 258.6], [748.6, 253.4], [774.7, 251.6], [804, 250.8], [847.6, 252.5], [891, 251.6], [925.7, 250.8], [939.6, 261.2], [951.7, 266.4], [977.8, 271.6], [1003.8, 274.2], [1052, 275.5], [1095.5, 276.4], [1112.8, 279], [1156, 279.9], [1191, 280.7], [1234.4, 284.2], [1269.7, 285.7], [1319.5, 286], [1346, 286.9], [1360, 290.4], [1372.7, 296.7], [1389, 304.8], [1404, 317.6], [1414.4, 335], [1420.2, 353.5], [1422.5, 379], [1422.5, 394], [1415.6, 405.6], [1400.5, 418.3], [1383, 426.4], [1354.2, 431], [1310, 433.5], [1279, 440.6], [1259.8, 451], [1249.5, 459.8], [1239.2, 486.3], [1234, 508.4], [1234.7, 524.6], [1245, 545.3], [1264.2, 567.4], [1279, 577.7], [1308.4, 585], [1352.6, 593.9], [1389.5, 599.8], [1441, 599], [1482.5, 601.2], [1503.6, 601.2], [1528.8, 593.3], [1547.4, 582.3], [1572.6, 578.9], [1613, 578.9], [1619.8, 583.7], [1682, 583.2], [1757.9, 584], [1771.4, 585.7], [1820.4, 585.7], [1839, 582.7], [1850.7, 583.2], [1852.5, 590.7], [1940, 591.6], [2074.7, 592.8], [2079.8, 594.1], [2147.4, 595], [2214.7, 595], [2265.3, 598.8], [2395, 598.8], [2518.9, 601.4]],
+  enemies: [[766, 246.4], [850.2, 243], [907.5, 242], [961.3, 243.8], [1002.6, 257.3], [1041.7, 246.9], [1089.4, 264.6], [1146.7, 267.7], [1206.6, 255.2], [1261.3, 272.6], [1338, 445.6], [1259, 469.4], [1265, 551.9], [1434.4, 588.7], [1529.7, 576.4], [1628.2, 572.2], [1686.3, 563.8], [1750.3, 555.4], [1813.7, 557.9], [1883.6, 566.3], [1932.4, 566.3], [1958.5, 566.3], [1981.3, 566.3], [1997.3, 566.3], [2013.3, 566.3], [2031.8, 566.3], [2047, 566.3], [2066.3, 566.3], [2154.1, 571.4], [2306.5, 573]],
+  // ウニ。urchinsWall は一番近い壁に張り付ける（体の半分が壁に埋まる）、urchinsFree はその場に浮かべる
+  urchinsWall: [[1206.6, 271.2], [1627.4, 552], [1887.8, 550.3], [1909.7, 550.3], [1932.4, 550.3], [1953.5, 550.3], [1976.2, 550.3], [1997.3, 550.3], [2018.3, 550.3], [2041, 550.3], [1883.6, 584], [1908, 584], [1919.8, 584], [1951.8, 584], [1977, 584], [2000.6, 584], [2022.5, 584], [2049.5, 584]],
+  urchinsFree: [[1512, 557], [1749.5, 570.5]],
+  goal: [2469.8, 579.3],
+};
+
+// 折れ線 line の上で点 p に一番近い点
+function nearestOnLine(line, p) {
+  let best = null;
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1];
+    const b = line[i];
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const len2 = ex * ex + ey * ey;
+    if (len2 <= 0) {
+      continue;
+    }
+    const t = clamp(((p.x - a.x) * ex + (p.y - a.y) * ey) / len2, 0, 1);
+    const q = vec2(a.x + ex * t, a.y + ey * t);
+    const d = Math.hypot(p.x - q.x, p.y - q.y);
+    if (best === null || d < best.d) {
+      best = { point: q, d: d };
+    }
+  }
+  return best;
+}
+
+// 折れ線を、間隔が step 以下になるように点を足す。広げる処理が長い直線の途中でも効くように
+function resampleLine(line, step) {
+  const out = [line[0]];
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1];
+    const b = line[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step));
+    for (let k = 1; k <= n; k++) {
+      out.push(vec2(a.x + (b.x - a.x) * k / n, a.y + (b.y - a.y) * k / n));
+    }
+  }
+  return out;
+}
+
+// 2本の壁の間が minWidth より狭い所を、両側へ半分ずつ押し広げる。相手の壁は押す前の形で測る（両側が同時に動くので、
+// 押し広げた後の幅がちょうど minWidth になる）。曲がり角で一度に合わない所があるので、SKETCH_B_WIDEN_PASSES 回くり返す
+function widenCorridor(top, bottom, minWidth) {
+  const push = function (line, other) {
+    return line.map(function (p) {
+      const near = nearestOnLine(other, p);
+      if (near.d >= minWidth || near.d <= 0) {
+        return p;
+      }
+      const k = (minWidth - near.d) / 2 / near.d;
+      return vec2(p.x + (p.x - near.point.x) * k, p.y + (p.y - near.point.y) * k);
+    });
+  };
+  let a = top;
+  let b = bottom;
+  for (let i = 0; i < CONFIG.SKETCH_B_WIDEN_PASSES; i++) {
+    const na = push(a, b);
+    const nb = push(b, a);
+    a = na;
+    b = nb;
+  }
+  return { top: a, bottom: b };
+}
+
+function wallStage(def, opts) {
+  const k = CONFIG.SKETCH_B_SCALE;
+  const P = function (p) { return vec2((p[0] - def.start[0]) * k, (p[1] - def.start[1]) * k); };
+  const startAngle = def.startDeg * SKETCH_DEG;
+  const dir = vec2(Math.cos(startAngle), Math.sin(startAngle));
+  const introTime = CONFIG.INTRO_ENTER_TIME + CONFIG.COUNTDOWN_FROM * CONFIG.COUNTDOWN_STEP;
+  const runway = CONFIG.INTRO_SPEED * introTime + CONFIG.RUNWAY_WALL_MARGIN;
+  const step = CONFIG.SKETCH_B_RESAMPLE;
+  const wide = widenCorridor(resampleLine(def.top.map(P), step), resampleLine(def.bottom.map(P), step), CONFIG.SKETCH_B_MIN_WIDTH);
+  const top = wide.top;
+  const bottom = wide.bottom;
+
+  // ゴールの壁。⊗ から一番近い上下の壁の点を結ぶ線の上に、通路をふさぐ向きで立てる。両端は壁に GOAL_WALL_BURY だけ埋める
+  const goal = P(def.goal);
+  const gt = nearestOnLine(top, goal).point;
+  const gb = nearestOnLine(bottom, goal).point;
+  const across = Math.atan2(gt.y - gb.y, gt.x - gb.x);
+  const wallLen = Math.hypot(gt.x - gb.x, gt.y - gb.y) + CONFIG.GOAL_WALL_BURY * 2;
+  const goalWall = {
+    x: (gt.x + gb.x) / 2,
+    y: (gt.y + gb.y) / 2,
+    size: vec2(CONFIG.GOAL_WALL_THICKNESS, wallLen),
+    // 壁の長い辺（ローカルの y）を、上下の壁を結ぶ線にそろえる角度
+    angleDeg: across / SKETCH_DEG - 90,
+    goal: true,
+  };
+  // 壁の向こうへ延ばす向き。上下を結ぶ線に直角で、スタートから離れる側
+  let ahead = vec2(Math.cos(across - Math.PI / 2), Math.sin(across - Math.PI / 2));
+  if (ahead.x * (goal.x - top[0].x) + ahead.y * (goal.y - top[0].y) < 0) {
+    ahead = vec2(-ahead.x, -ahead.y);
+  }
+  // 壁の線の終わりを、ゴールの壁から GOAL_RUNOUT 先まで延ばす（壁より先に描かれた線は捨てて、まっすぐにする）
+  const cutAt = function (line, from) {
+    const kept = line.filter(function (p) {
+      return (p.x - from.x) * ahead.x + (p.y - from.y) * ahead.y < 0;
+    });
+    kept.push(from);
+    kept.push(vec2(from.x + ahead.x * CONFIG.GOAL_RUNOUT, from.y + ahead.y * CONFIG.GOAL_RUNOUT));
+    return kept;
+  };
+  const topEnd = cutAt(top, gt);
+  const bottomEnd = cutAt(bottom, gb);
+
+  // 外側の縁：上の壁をゴール側へ、下の壁をスタート側へ戻って一周。最初と最後の点の間がスタートの口
+  const outer = topEnd.concat(bottomEnd.slice().reverse());
+  const first = outer[0];
+  const last = outer[outer.length - 1];
+  outer.push(vec2(last.x - dir.x * runway, last.y - dir.y * runway));
+  outer.push(vec2(first.x - dir.x * runway, first.y - dir.y * runway));
+  if (ringArea(outer) < 0) {
+    outer.reverse();
+  }
+  const water = [outer];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const q of outer) {
+    minX = Math.min(minX, q.x);
+    minY = Math.min(minY, q.y);
+    maxX = Math.max(maxX, q.x);
+    maxY = Math.max(maxY, q.y);
+  }
+  const margin = CONFIG.COURSE_VIEW_MARGIN;
+
+  // ウニ。壁に張り付けるものは、一番近い縁の点から水の側へ URCHIN_RADIUS × URCHIN_WALL_OUT だけ出す（0 で体の半分が埋まる）
+  const urchins = [];
+  for (const p of def.urchinsWall) {
+    const e = nearestWaterEdge(water, P(p));
+    const out = CONFIG.URCHIN_RADIUS * CONFIG.URCHIN_WALL_OUT;
+    urchins.push({ x: e.point.x + e.normal.x * out, y: e.point.y + e.normal.y * out, wallNormal: e.normal });
+  }
+  for (const p of def.urchinsFree) {
+    const q = P(p);
+    urchins.push({ x: q.x, y: q.y, wallNormal: null });
+  }
+
+  // ボットの通り道（検証用）。上の壁の点ごとに、一番近い下の壁の点との真ん中
+  const botPath = [];
+  for (let i = 0; i < topEnd.length; i += CONFIG.SKETCH_B_BOT_STRIDE) {
+    const near = nearestOnLine(bottomEnd, topEnd[i]);
+    botPath.push(vec2((topEnd[i].x + near.point.x) / 2, (topEnd[i].y + near.point.y) / 2));
+  }
+  botPath.unshift(vec2(0, 0));
+  botPath.push(vec2(goalWall.x + ahead.x * CONFIG.GOAL_RUNOUT / 2, goalWall.y + ahead.y * CONFIG.GOAL_RUNOUT / 2));
+
+  return {
+    type: 'zako',
+    label: opts.label,
+    startPos: vec2(0, 0),
+    startAngleDeg: def.startDeg,
+    water: water,
+    left: minX - margin,
+    top: minY - margin,
+    width: maxX + margin,
+    height: maxY + margin,
+    timeLimit: opts.timeLimit,
+    rocks: [],
+    enemies: def.enemies.map(P),
+    breakables: [],
+    botPath: botPath,
+    // ゴールは壁。goalPos は壁の真ん中（黄色い目標物は描かない）
+    goalPos: vec2(goalWall.x, goalWall.y),
+    goalRadius: 0,
+    goalWall: true,
+    abilities: opts.abilities,
+    gimmicks: {
+      urchins: urchins,
+      walls: [goalWall],
+    },
+  };
+}
+
 // 前の地図の10ステージ（v81〜v101 の「ふつう」の組）。v102 で手描きの3ステージに入れ替えたので、ボス戦だけを「ボスだけ」の組で使う
 const STAGES_MAP_OLD = [
   mapStage(MAP_1, { label: 'STAGE 1  Move', type: 'zako', timeLimit: 6, /* 秒。敵も石もないので、ボットのクリアタイム（4.0秒）の約1.5倍のふつうの制限時間 */ botPath: BOT_1 }),
@@ -2279,11 +2506,17 @@ const STAGES_NORMAL = [
   sketchStage(SKETCH_2, { label: 'STAGE 2  Puffer', bossKind: 'puffer', timeLimit: SKETCH_TIME_2 }),
   sketchStage(SKETCH_3, { label: 'STAGE 3  Octopus', bossKind: 'octo', timeLimit: SKETCH_TIME_3 }),
 ];
+// 新ステージ組（v106）。今はステージ1だけ。回転アタックとドリフトは使えない（ボスを倒すごとに解放していく予定）
+// 制限時間は、何も倒さないボットのタイム（SKETCH_B1_BOT_TIME）の SKETCH_B_TIME_RATE 倍。ほかのステージ（約1.5倍）よりかなりゆるい
+const SKETCH_B1_BOT_TIME = 24.3; // 秒。何も倒さないボットがゴールの壁を突き破るまでのタイム（v106 で測った値）。制限時間は 24.3 × 2.5 = 約 60.8 秒
+const STAGES_FRESH = [
+  wallStage(SKETCH_B1, { label: 'STAGE 1', timeLimit: SKETCH_B1_BOT_TIME * CONFIG.SKETCH_B_TIME_RATE, abilities: { spin: false, drift: false } }),
+];
 const STAGES_BOSS = STAGES_MAP_OLD.filter(function (stage) { return stage.type === 'boss'; }).concat([STAGE_KANI]);
 
-const STAGE_SETS = { normal: STAGES_NORMAL, gimmick: STAGES_GIMMICK, boss: STAGES_BOSS };
+const STAGE_SETS = { normal: STAGES_NORMAL, gimmick: STAGES_GIMMICK, boss: STAGES_BOSS, fresh: STAGES_FRESH };
 // 全部のステージを1列に並べたもの。海藻の並びの種など、ステージごとに違う番号がほしい所で使う
-const ALL_STAGES = STAGES_NORMAL.concat(STAGES_GIMMICK).concat(STAGES_BOSS);
+const ALL_STAGES = STAGES_NORMAL.concat(STAGES_GIMMICK).concat(STAGES_BOSS).concat(STAGES_FRESH);
 
 // ボスの胴体の横の半径。種類で違う大きさにできるよう、ここ1か所で決める（ゲームと描画の両方で使うので外に置く）
 // ボスの種類ごとの決まり（体力・大きさの倍率・全長と半径の比・いちばん大きくなった時の倍率）を1か所にまとめる。
@@ -2692,7 +2925,9 @@ function createGame() {
     state.shakeDuration = CONFIG.SHAKE_DURATION; // 今の振動が収まるまでの全体の時間。弱め方の割合に使う
     state.bossDownAt = -1;     // ボスを倒した時の実時間。-1はまだ倒していない
     state.timeStopped = false; // タイムを止めたか（ボスを倒した瞬間に止める）
+    state.goalBrokenAt = -1;   // 秒（実時間）。ゴールの壁（v106）を突き破った時刻。まだなら -1
     state.screenFlash = 0;     // 画面全体を白く光らせる残り時間
+    state.screenFlashMax = CONFIG.BOSS_DEATH_FLASH; // 光らせ始めた時の長さ（薄くしていく割合の分母）。ゴールの壁（v106）は短い
     state.speedBurst = 0;      // 秒（実時間）。加速が入った時に画面全体の風切りを流す残り時間
     state.speedLines = [];     // 風切りの線。{ x, y: 画面の座標, len, age, life }
     state.speedLineCarry = 0;  // 短い線を流し続ける時の、出しきれなかった端数（本）
@@ -2709,7 +2944,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0, bossInsideIgnored: 0, blastHits: 0 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0, bossInsideIgnored: 0, blastHits: 0, urchinHits: 0, goalBroken: -1 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -3415,8 +3650,8 @@ function createGame() {
   // force が true なら、回転中や待ち時間中でも出し直す
   function startSpin(kind, force) {
     const fish = state.fish;
-    // 設定で回転アタックを切っている時は、右クリックの回転もドリフトの黄色い回転も出さない
-    if (!SETTINGS.spin) {
+    // 設定で回転アタックを切っている時と、ステージで使えない時（v106）は、右クリックの回転もドリフトの黄色い回転も出さない
+    if (!abilityOn('spin')) {
       return;
     }
     if (!force) {
@@ -3433,6 +3668,19 @@ function createGame() {
     state.stats.spins++;
   }
 
+  // 回転アタック（'spin'）・ドリフト（'drift'）を今使えるか。設定で切っていないことと、
+  // ステージの abilities（v106）で使えないことになっていないことの両方
+  function abilityOn(name) {
+    if (!SETTINGS[name]) {
+      return false;
+    }
+    const ab = currentStage().abilities;
+    if (ab && ab[name] === false) {
+      return false;
+    }
+    return true;
+  }
+
   // ---------- ドリフト ----------
   // ゲームが動いている間だけドリフトを受け付ける。クリア後に離して加速や回転が出ないようにする
   function isPlaying() {
@@ -3444,8 +3692,8 @@ function createGame() {
     if (fish.driftHeld) {
       return;
     }
-    // 設定でドリフトを切っている時は、押しても何も起きない
-    if (!SETTINGS.drift) {
+    // 設定でドリフトを切っている時と、ステージで使えない時（v106）は、押しても何も起きない
+    if (!abilityOn('drift')) {
       return;
     }
     if (!isPlaying()) {
@@ -3699,13 +3947,37 @@ function createGame() {
         if (p.angleDeg !== undefined) {
           angle = p.angleDeg * DEG;
         }
-        const w = { pos: vec2(p.x, p.y), size: size, angle: angle, alive: true };
+        // goal（v106）はゴールの壁。回転していなくても、触れたら突き破ってクリアになる
+        const w = { pos: vec2(p.x, p.y), size: size, angle: angle, alive: true, goal: p.goal === true };
         w.rock = wallRect(w);
         w.cracks = wallCracks(w, i);
         return w;
       }),
       booms: [],               // ビンの爆発の演出。{ pos, t, shards: [{ dir, spin }] }
+      // ウニ（v106）。wallNormal は張り付いた壁から水の側を向く向き（浮いているものは null）。
+      // touching は今触れているか（離れるまで2回目の減速を起こさない）。spines は描くトゲ（向きと長さ）を置いた時に一度だけ作る
+      urchins: list('urchins').map(function (p, i) {
+        return { pos: vec2(p.x, p.y), wallNormal: p.wallNormal, touching: false, spines: urchinSpines(p.wallNormal, i) };
+      }),
     };
+  }
+
+  // ウニのトゲ。体のまわりに等間隔で並べ、長さを少しばらつかせる。壁に張り付いたものは、壁に埋まる側のトゲを作らない
+  function urchinSpines(wallNormal, seed) {
+    const rnd = makeRng(CONFIG.URCHIN_SEED + seed);
+    const spines = [];
+    for (let i = 0; i < CONFIG.URCHIN_SPINE_COUNT; i++) {
+      const a = TAU * i / CONFIG.URCHIN_SPINE_COUNT;
+      const len = CONFIG.URCHIN_SPINE_LENGTH * (1 + (rnd() * 2 - 1) * CONFIG.URCHIN_SPINE_JITTER);
+      if (wallNormal) {
+        const along = Math.cos(a) * wallNormal.x + Math.sin(a) * wallNormal.y;
+        if (along < CONFIG.URCHIN_WALL_HIDE) {
+          continue;
+        }
+      }
+      spines.push({ a: a, len: len });
+    }
+    return spines;
   }
 
   // 垂れ下がる・突き出る岩の三角形。根元の真ん中 pos から、dirDeg の向きへ先が伸びる
@@ -4124,11 +4396,29 @@ function createGame() {
       if (!w.alive) {
         continue;
       }
+      // ゴールの壁（v106）：どんな速さでも、触れたら勢いのまま突き破る。押し出さないので魚は止まらない
+      if (w.goal) {
+        if (touchesPolygon(fish.pos, CONFIG.FISH_RADIUS, w.rock)) {
+          breakGoalWall(w);
+        }
+        continue;
+      }
       if (isSpinning() && touchesPolygon(fish.pos, CONFIG.FISH_RADIUS, w.rock)) {
         breakBreakable(w);
         continue;
       }
       pushOutOfRock(fish.pos, w.rock, CONFIG.FISH_RADIUS);
+    }
+
+    // ウニ（v106）：当たるとカブトガニと同じ減速。押し戻さずにすり抜ける。離れるまでは同じウニで2回目の減速を起こさない
+    const urchinHit = CONFIG.URCHIN_RADIUS + CONFIG.URCHIN_SPINE_LENGTH * CONFIG.URCHIN_HIT_SPINE_RATIO + CONFIG.FISH_RADIUS;
+    for (const u of g.urchins) {
+      const hit = dist(u.pos, fish.pos) <= urchinHit;
+      if (hit && !u.touching) {
+        slowFish();
+        state.stats.urchinHits++;
+      }
+      u.touching = hit;
     }
 
     // ビニール袋：左へゆっくり流れてくる。当たると顔に貼り付く（回転していても貼り付く）
@@ -4357,6 +4647,53 @@ function createGame() {
       b.passing = true;
       onDamaged(b.pos);
     }
+  }
+
+  // ゴールの壁を突き破った（v106）。タイムとゲージを止め、特大のヒットストップ・揺れ・光と、魚の進む向きへ飛ぶ破片を出す。
+  // クリアの表示は GOAL_CLEAR_DELAY 後（updateGoal）。魚は止めずにそのまま泳がせる
+  function breakGoalWall(w) {
+    const fish = state.fish;
+    w.alive = false;
+    state.goalBrokenAt = state.realTime;
+    state.timeStopped = true;
+    state.clearTime = state.gameTime;
+    // 同じフレームで雑魚に当てた時のヒットストップより長いもので上書きする
+    state.hitstop = CONFIG.GOAL_BREAK_HITSTOP;
+    state.shake = CONFIG.GOAL_BREAK_SHAKE_TIME;
+    state.shakeDuration = CONFIG.GOAL_BREAK_SHAKE_TIME;
+    state.shakeAmp = CONFIG.GOAL_BREAK_SHAKE;
+    state.screenFlash = CONFIG.GOAL_BREAK_FLASH;
+    state.screenFlashMax = CONFIG.GOAL_BREAK_FLASH;
+    fish.flash = CONFIG.FLASH_DURATION;
+    addParticle({
+      type: 'ring',
+      kind: 'rock',
+      pos: vec2(w.pos.x, w.pos.y),
+      vel: vec2(0, 0),
+      life: CONFIG.BREAKABLE_DUST_LIFETIME,
+      radius: CONFIG.GOAL_DUST_RADIUS,
+    });
+    // 破片は壁の面のあちこちから、魚の進む向きを中心に GOAL_DEBRIS_SPREAD_DEG の範囲へ飛ばす（突き抜けた勢いに見せる）
+    const spread = CONFIG.GOAL_DEBRIS_SPREAD_DEG * DEG;
+    for (let i = 0; i < CONFIG.GOAL_DEBRIS_COUNT; i++) {
+      const ang = fish.angle + (Math.random() * 2 - 1) * spread;
+      const speed = CONFIG.GOAL_DEBRIS_SPEED * (0.4 + Math.random() * 0.8);
+      // 壁の長い辺の上のどこか
+      const along = (Math.random() - 0.5) * w.size.y;
+      const from = vec2(w.pos.x - Math.sin(w.angle) * along, w.pos.y + Math.cos(w.angle) * along);
+      addParticle({
+        type: 'debris',
+        kind: 'rock',
+        pos: from,
+        vel: vec2(Math.cos(ang) * speed, Math.sin(ang) * speed),
+        life: CONFIG.GOAL_DEBRIS_LIFETIME * (0.7 + Math.random() * 0.5),
+        size: CONFIG.GOAL_DEBRIS_SIZE * (0.5 + Math.random() * 0.9),
+        angle: Math.random() * TAU,
+        spinRate: (Math.random() - 0.5) * 14,
+        drag: CONFIG.BREAKABLE_DEBRIS_DRAG,
+      });
+    }
+    state.stats.goalBroken = state.gameTime;
   }
 
   // 壊す。回転で敵を倒した時と同じく回転ぶんを積み、ヒットストップも回転と同じ。揺れだけ岩専用で大きく
@@ -5910,7 +6247,12 @@ function createGame() {
     }
     const stage = currentStage();
     let clear = false;
-    if (stage.type === 'zako') {
+    if (stage.goalWall) {
+      // ゴールが壁のステージ（v106）：突き破ってから GOAL_CLEAR_DELAY たったらクリア
+      if (state.goalBrokenAt >= 0 && state.realTime - state.goalBrokenAt >= CONFIG.GOAL_CLEAR_DELAY) {
+        clear = true;
+      }
+    } else if (stage.type === 'zako') {
       if (dist(state.fish.pos, stage.goalPos) <= CONFIG.FISH_RADIUS + stage.goalRadius) {
         clear = true;
       }
@@ -5947,6 +6289,7 @@ function createGame() {
     state.shakeDuration = CONFIG.BOSS_DEATH_SHAKE_TIME;
     state.shakeAmp = CONFIG.BOSS_DEATH_SHAKE;
     state.screenFlash = CONFIG.BOSS_DEATH_FLASH;
+    state.screenFlashMax = CONFIG.BOSS_DEATH_FLASH;
     // カメラを寄せる位置
     state.bossDeathPos = vec2(boss.pos.x, boss.pos.y);
     // しぶきと電撃を特大で
@@ -6419,7 +6762,8 @@ function createGame() {
       }
       // 時間制限。ゲーム内時間で減らす（タイムの記録と同じく、ヒットストップ中はほぼ止まる）。
       // 道中とボス部屋が1つのステージ（v102）は、部屋の入口がふさがったら止める（ボス戦に時間切れはない）
-      if (state.timeLeft !== null && state.collapseAt < 0 && !state.roomClosed) {
+      // ゴールの壁を突き破った後（v106。timeStopped）も止める
+      if (state.timeLeft !== null && state.collapseAt < 0 && !state.roomClosed && !state.timeStopped) {
         state.timeLeft -= gameDt;
         // 残りが区切りの秒数を切ったら、画面の真ん中に数字を出す
         while (state.calloutIndex < CONFIG.LIMIT_CALLOUTS.length && state.timeLeft <= CONFIG.LIMIT_CALLOUTS[state.calloutIndex]) {
@@ -6756,6 +7100,9 @@ function createRenderer(game, canvas) {
     rockDark: token('--rock-dark'),
     rockCrack: token('--rock-crack'),
     spikeTip: token('--spike-tip'),
+    urchinBody: token('--urchin-body'),
+    urchinLight: token('--urchin-light'),
+    urchinSpine: token('--urchin-spine'),
     fg: token('--fg'),
   };
   // 噴射口の火山が予告で赤く染まっていく段の色。岩の色から警告の赤まで BLAST_WARN_STEPS 段。
@@ -9068,7 +9415,8 @@ function createRenderer(game, canvas) {
       drawBossWalls(stage, left, layerScale, state.roomClosed);
     }
     // ぶつかる相手（ゴール・ひび割れ岩・雑魚・ボス）も、ドット絵の層に描く
-    if (stage.type === 'zako') {
+    // ゴールが壁のステージ（v106）は、黄色い目標物を描かない（壁はギミックと一緒に描く）
+    if (stage.type === 'zako' && !stage.goalWall) {
       drawGoal(stage, state.realTime);
     }
     drawBreakables(state);
@@ -9127,7 +9475,7 @@ function createRenderer(game, canvas) {
 
     // ボスを倒した瞬間に画面全体を白く光らせる。画面の座標で描く
     if (state.screenFlash > 0) {
-      ctx.globalAlpha = clamp(state.screenFlash / CONFIG.BOSS_DEATH_FLASH, 0, 1) * 0.8;
+      ctx.globalAlpha = clamp(state.screenFlash / state.screenFlashMax, 0, 1) * 0.8;
       ctx.fillStyle = colors.flash;
       ctx.fillRect(0, 0, w, h);
       ctx.globalAlpha = 1;
@@ -9404,6 +9752,10 @@ function createRenderer(game, canvas) {
       }
       ctx.globalAlpha = 1;
     }
+    // ウニ（v106）：トゲ（根元は暗い色、先は危ない赤）を描いてから、濃い紫の丸い体と明るい所を重ねる
+    for (const u of g.urchins) {
+      drawUrchin(u);
+    }
     // ビニール袋：白い半透明の袋と、持ち手
     for (const bag of g.bags) {
       if (!bag.alive) {
@@ -9411,6 +9763,50 @@ function createRenderer(game, canvas) {
       }
       drawBagShape(bag.pos, CONFIG.BAG_RADIUS, t);
     }
+  }
+
+  // ウニ1つ。トゲは根元から先へ細くなる形で、先の URCHIN_SPINE_TIP_RATIO を危ない色で塗る
+  function drawUrchin(u) {
+    const r = CONFIG.URCHIN_RADIUS;
+    const baseHalf = r * CONFIG.URCHIN_SPINE_WIDTH;
+    for (const sp of u.spines) {
+      const ux = Math.cos(sp.a);
+      const uy = Math.sin(sp.a);
+      const nx = -uy;
+      const ny = ux;
+      // 根元は体の少し内側から生やして、体との間にすき間を作らない
+      const bx = u.pos.x + ux * r * CONFIG.URCHIN_SPINE_ROOT;
+      const by = u.pos.y + uy * r * CONFIG.URCHIN_SPINE_ROOT;
+      const tx = u.pos.x + ux * (r + sp.len);
+      const ty = u.pos.y + uy * (r + sp.len);
+      const split = 1 - CONFIG.URCHIN_SPINE_TIP_RATIO;
+      const mx = bx + (tx - bx) * split;
+      const my = by + (ty - by) * split;
+      const midHalf = baseHalf * CONFIG.URCHIN_SPINE_TIP_RATIO;
+      ctx.fillStyle = colors.urchinSpine;
+      ctx.beginPath();
+      ctx.moveTo(bx + nx * baseHalf, by + ny * baseHalf);
+      ctx.lineTo(mx + nx * midHalf, my + ny * midHalf);
+      ctx.lineTo(mx - nx * midHalf, my - ny * midHalf);
+      ctx.lineTo(bx - nx * baseHalf, by - ny * baseHalf);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = colors.spikeTip;
+      ctx.beginPath();
+      ctx.moveTo(mx + nx * midHalf, my + ny * midHalf);
+      ctx.lineTo(tx, ty);
+      ctx.lineTo(mx - nx * midHalf, my - ny * midHalf);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = colors.urchinBody;
+    ctx.beginPath();
+    ctx.arc(u.pos.x, u.pos.y, r, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = colors.urchinLight;
+    ctx.beginPath();
+    ctx.ellipse(u.pos.x + r * CONFIG.URCHIN_HIGHLIGHT.x, u.pos.y + r * CONFIG.URCHIN_HIGHLIGHT.y, r * CONFIG.URCHIN_HIGHLIGHT_SIZE.x, r * CONFIG.URCHIN_HIGHLIGHT_SIZE.y, 0, 0, TAU);
+    ctx.fill();
   }
 
   // カブトガニ。床に張り付いているので、画面の下の手前の影（岩と水草）に隠れないよう、手前の影より後に描く
@@ -9664,8 +10060,8 @@ function start() {
   }
 
   // ===== ステージセレクト（v104） =====
-  const SET_NAMES = ['normal', 'gimmick', 'boss'];
-  const SET_LABELS = { normal: 'いつもの', gimmick: '新ギミック', boss: 'ボスだけ' };
+  const SET_NAMES = ['normal', 'gimmick', 'boss', 'fresh'];
+  const SET_LABELS = { normal: 'いつもの', gimmick: '新ギミック', boss: 'ボスだけ', fresh: '新ステージ組' };
   // ボタンを押した時の共通の受け方。押したことをキャンバスやメニューの外側に伝えない（回転やドリフトが出ないように）
   function onPress(button, action) {
     button.addEventListener('pointerdown', function (e) {
@@ -9723,7 +10119,7 @@ function start() {
     titleSet = null;
     titleMenu.hidden = false;
     titleStages.hidden = true;
-    titleStart.textContent = 'クリックか 1 / 2 / 3 キーで組を選ぶ';
+    titleStart.textContent = 'クリックか 1〜4 キーで組を選ぶ';
   }
   function showTitleStages(setName) {
     titleSet = setName;
@@ -9934,6 +10330,10 @@ function start() {
   document.getElementById('choiceBoss').addEventListener('pointerdown', function (e) {
     e.preventDefault();
     showTitleStages('boss');
+  });
+  document.getElementById('choiceFresh').addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    showTitleStages('fresh');
   });
   onPress(document.getElementById('hudStageButton'), openSelect);
 
