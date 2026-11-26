@@ -2145,6 +2145,9 @@ const SKETCH_B1 = {
   centerRow: [19, 27],
   // ⑧の列と同じ高さにそろえるだけの雑魚（⑨の2匹。v110）。高さを決める平均には入れない
   rowFollow: [28, 29],
+  // ⑧からゴールまでの天井と床を真横にする（v111）。x が fromX 以上の点の高さを、上の壁は topY、下の壁は bottomY にそろえる（絵の座標）。
+  // fromX は 1851：⑦から⑧に入る所の床の段差（x 1850.7 の点）を残すため
+  straight: { fromX: 1851, topY: 543, bottomY: 592 },
   goal: [2469.8, 579.3],
 };
 
@@ -2193,8 +2196,26 @@ function wallStage(def, opts) {
   const runway = CONFIG.INTRO_SPEED * introTime + CONFIG.RUNWAY_WALL_MARGIN;
   // 地形は絵の線をそのまま拡大するだけ（v108）。押し広げや引き伸ばしはしない（形を絵のまま保つため）
   const step = CONFIG.SKETCH_B_RESAMPLE;
-  const top = resampleLine(def.top.map(P), step);
-  const bottom = resampleLine(def.bottom.map(P), step);
+  // straight（v111）：区間の点の高さをそろえて、天井と床を真横の線にする
+  const flatten = function (line, y) {
+    if (!def.straight) {
+      return line;
+    }
+    return line.map(function (p) {
+      if (p[0] >= def.straight.fromX) {
+        return [p[0], y];
+      }
+      return p;
+    });
+  };
+  let topSrc = def.top;
+  let bottomSrc = def.bottom;
+  if (def.straight) {
+    topSrc = flatten(def.top, def.straight.topY);
+    bottomSrc = flatten(def.bottom, def.straight.bottomY);
+  }
+  const top = resampleLine(topSrc.map(P), step);
+  const bottom = resampleLine(bottomSrc.map(P), step);
 
   // ゴールの壁。⊗ から一番近い上下の壁の点を結ぶ線の上に、通路をふさぐ向きで立てる。両端は壁に GOAL_WALL_BURY だけ埋める
   const goal = P(def.goal);
