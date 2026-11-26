@@ -876,6 +876,9 @@ const CONFIG = {
   SKETCH_B_RESAMPLE: 60,        // px。広げる前に壁の線へ点を足す間隔。長い直線の途中でも広げられるように
   SKETCH_B_WIDEN_PASSES: 3,     // 回。広げる処理をくり返す回数。曲がり角で一度に合わない所を合わせる
   SKETCH_B_BOT_STRIDE: 4,       // 個。検証用のボットの通り道を作る時に、上の壁の点を何個おきに使うか
+  SKETCH_B_STRETCH: 1.5,        // 倍。新ステージ組の道を、進む向きにだけ伸ばす倍率（v107）。道の太さ・魚やウニの大きさ・壁からの距離は変えない
+  SKETCH_B_KEEP_FROM: vec2(1850, 566), // 絵の座標。伸ばさない区間（⑧密集地帯。ウニが上下に並び、真ん中に雑魚が並ぶ所）の始まり。この区間は今の詰まり具合のまま
+  SKETCH_B_KEEP_TO: vec2(2080, 566),   // 絵の座標。伸ばさない区間の終わり。ここから先（⑨とゴール）は、区間が縮んだぶん詰めてつなぐ
   SKETCH_B_TIME_RATE: 2.5,      // 倍。新ステージ組の制限時間 = 何も倒さないボットのタイム × これ。ゲージ（＝のこり時間）の減り方も割合でゆるくなる
   SKETCH_SCALE: 45,             // px。手描きのステージ設計（v102）の絵の 1 ピクセルあたりのゲームの長さ。通路の太さ（絵の上で 8〜10）が、それまでの道幅 380px くらいになる値
   SKETCH_BAR_CRAB_FACE: -1,     // 浮いた棒に張り付くカブトガニの頭の向き（-1 左 / 1 右）
@@ -2211,12 +2214,41 @@ function wallStage(def, opts) {
   const introTime = CONFIG.INTRO_ENTER_TIME + CONFIG.COUNTDOWN_FROM * CONFIG.COUNTDOWN_STEP;
   const runway = CONFIG.INTRO_SPEED * introTime + CONFIG.RUNWAY_WALL_MARGIN;
   const step = CONFIG.SKETCH_B_RESAMPLE;
-  const wide = widenCorridor(resampleLine(def.top.map(P), step), resampleLine(def.bottom.map(P), step), CONFIG.SKETCH_B_MIN_WIDTH);
+  const topRaw = resampleLine(def.top.map(P), step);
+  const bottomRaw = resampleLine(def.bottom.map(P), step);
+  // 進む向きにだけ伸ばす（v107）。点ごとに、上下の壁の一番近い点の真ん中（道の真ん中の線の上の点）を伸ばし、
+  // 真ん中の線からのずれ（壁までの距離や、道の中の上下の位置）はそのまま足し戻す
+  const keepFrom = P([CONFIG.SKETCH_B_KEEP_FROM.x, CONFIG.SKETCH_B_KEEP_FROM.y]);
+  const keepTo = P([CONFIG.SKETCH_B_KEEP_TO.x, CONFIG.SKETCH_B_KEEP_TO.y]);
+  const stretchMid = function (m) {
+    const a = CONFIG.SKETCH_B_STRETCH;
+    if (m.x < keepFrom.x) {
+      // 伸ばさない区間より前：スタートを原点にそのまま伸ばす
+      return vec2(m.x * a, m.y * a);
+    }
+    if (m.x <= keepTo.x) {
+      // 伸ばさない区間の中：区間の始まりがずれたぶんだけ平行に動かす（間隔は変えない）
+      return vec2(m.x + keepFrom.x * (a - 1), m.y + keepFrom.y * (a - 1));
+    }
+    // 区間より後：伸ばしたうえで、区間を伸ばさなかったぶん（区間の長さ × (a - 1)）だけ手前へ詰める
+    return vec2(m.x * a - (keepTo.x - keepFrom.x) * (a - 1), m.y * a - (keepTo.y - keepFrom.y) * (a - 1));
+  };
+  const midOf = function (p) {
+    const nt = nearestOnLine(topRaw, p).point;
+    const nb = nearestOnLine(bottomRaw, p).point;
+    return vec2((nt.x + nb.x) / 2, (nt.y + nb.y) / 2);
+  };
+  const stretch = function (p) {
+    const m = midOf(p);
+    const m2 = stretchMid(m);
+    return vec2(m2.x + (p.x - m.x), m2.y + (p.y - m.y));
+  };
+  const wide = widenCorridor(resampleLine(topRaw.map(stretch), step), resampleLine(bottomRaw.map(stretch), step), CONFIG.SKETCH_B_MIN_WIDTH);
   const top = wide.top;
   const bottom = wide.bottom;
 
   // ゴールの壁。⊗ から一番近い上下の壁の点を結ぶ線の上に、通路をふさぐ向きで立てる。両端は壁に GOAL_WALL_BURY だけ埋める
-  const goal = P(def.goal);
+  const goal = stretch(P(def.goal));
   const gt = nearestOnLine(top, goal).point;
   const gb = nearestOnLine(bottom, goal).point;
   const across = Math.atan2(gt.y - gb.y, gt.x - gb.x);
@@ -2271,12 +2303,12 @@ function wallStage(def, opts) {
   // ウニ。壁に張り付けるものは、一番近い縁の点から水の側へ URCHIN_RADIUS × URCHIN_WALL_OUT だけ出す（0 で体の半分が埋まる）
   const urchins = [];
   for (const p of def.urchinsWall) {
-    const e = nearestWaterEdge(water, P(p));
+    const e = nearestWaterEdge(water, stretch(P(p)));
     const out = CONFIG.URCHIN_RADIUS * CONFIG.URCHIN_WALL_OUT;
     urchins.push({ x: e.point.x + e.normal.x * out, y: e.point.y + e.normal.y * out, wallNormal: e.normal });
   }
   for (const p of def.urchinsFree) {
-    const q = P(p);
+    const q = stretch(P(p));
     urchins.push({ x: q.x, y: q.y, wallNormal: null });
   }
 
@@ -2301,7 +2333,7 @@ function wallStage(def, opts) {
     height: maxY + margin,
     timeLimit: opts.timeLimit,
     rocks: [],
-    enemies: def.enemies.map(P),
+    enemies: def.enemies.map(function (p) { return stretch(P(p)); }),
     breakables: [],
     botPath: botPath,
     // ゴールは壁。goalPos は壁の真ん中（黄色い目標物は描かない）
@@ -2508,7 +2540,7 @@ const STAGES_NORMAL = [
 ];
 // 新ステージ組（v106）。今はステージ1だけ。回転アタックとドリフトは使えない（ボスを倒すごとに解放していく予定）
 // 制限時間は、何も倒さないボットのタイム（SKETCH_B1_BOT_TIME）の SKETCH_B_TIME_RATE 倍。ほかのステージ（約1.5倍）よりかなりゆるい
-const SKETCH_B1_BOT_TIME = 24.3; // 秒。何も倒さないボットがゴールの壁を突き破るまでのタイム（v106 で測った値）。制限時間は 24.3 × 2.5 = 約 60.8 秒
+const SKETCH_B1_BOT_TIME = 34.4; // 秒。何も倒さないボットがゴールの壁を突き破るまでのタイム（v107 で道を進む向きに 1.5 倍にして測り直し。v106 は 24.3）。制限時間は 34.4 × 2.5 = 86 秒
 const STAGES_FRESH = [
   wallStage(SKETCH_B1, { label: 'STAGE 1', timeLimit: SKETCH_B1_BOT_TIME * CONFIG.SKETCH_B_TIME_RATE, abilities: { spin: false, drift: false } }),
 ];
