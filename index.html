@@ -871,14 +871,10 @@ const CONFIG = {
   // カジキの絵を変えてもサメが自動でついてくるようにするため。計算は sharkRadius()
   BOSS_SIZE_TO_PLAYER: 4,       // 倍。ボスの全長（尾の先から鼻先まで）が、カジキの全長の何倍か。今はサメだけに使う
   SHARK_TAIL_LENGTH_RATIO: 1.7, // 胴の横の半径に対する、中心から尾びれの先までの長さ。全長＝半径×(1＋これ)
-  SKETCH_B_SCALE: 7.5,          // px。新ステージ組（v106）の絵の 1 単位（横 2560 にした絵の 1 ピクセル）あたりのゲームの長さ。最初の直線の幅（絵で 62）が、いつものステージ1の最初の通路（約 450px）と同じくらいになる値
-  SKETCH_B_MIN_WIDTH: 300,      // px。新ステージ組の通路の一番細い幅。絵のままだと細い通路（絵で 13 → 約 100px）を魚と雑魚が通れないので、ここまで左右に広げる
-  SKETCH_B_RESAMPLE: 60,        // px。広げる前に壁の線へ点を足す間隔。長い直線の途中でも広げられるように
-  SKETCH_B_WIDEN_PASSES: 3,     // 回。広げる処理をくり返す回数。曲がり角で一度に合わない所を合わせる
+  SKETCH_B_SCALE: 11.25,        // px。新ステージ組の絵の 1 単位（横 2560 にした絵の 1 ピクセル）あたりのゲームの長さ（v108）。絵を縦も横も同じ倍率で拡大して、地形の形を絵のまま保つ。
+                                //   一番細い③の通路（絵で 10.7）が約 120px＝雑魚の直径とほぼ同じになる値。v106 の 7.5 の 1.5 倍
+  SKETCH_B_RESAMPLE: 60,        // px。壁の線へ点を足す間隔。検証用のボットの通り道を、長い直線の途中にも作るため
   SKETCH_B_BOT_STRIDE: 4,       // 個。検証用のボットの通り道を作る時に、上の壁の点を何個おきに使うか
-  SKETCH_B_STRETCH: 1.5,        // 倍。新ステージ組の道を、進む向きにだけ伸ばす倍率（v107）。道の太さ・魚やウニの大きさ・壁からの距離は変えない
-  SKETCH_B_KEEP_FROM: vec2(1850, 566), // 絵の座標。伸ばさない区間（⑧密集地帯。ウニが上下に並び、真ん中に雑魚が並ぶ所）の始まり。この区間は今の詰まり具合のまま
-  SKETCH_B_KEEP_TO: vec2(2080, 566),   // 絵の座標。伸ばさない区間の終わり。ここから先（⑨とゴール）は、区間が縮んだぶん詰めてつなぐ
   SKETCH_B_TIME_RATE: 2.5,      // 倍。新ステージ組の制限時間 = 何も倒さないボットのタイム × これ。ゲージ（＝のこり時間）の減り方も割合でゆるくなる
   SKETCH_SCALE: 45,             // px。手描きのステージ設計（v102）の絵の 1 ピクセルあたりのゲームの長さ。通路の太さ（絵の上で 8〜10）が、それまでの道幅 380px くらいになる値
   SKETCH_BAR_CRAB_FACE: -1,     // 浮いた棒に張り付くカブトガニの頭の向き（-1 左 / 1 右）
@@ -1971,7 +1967,8 @@ function nearestWaterEdge(water, p) {
     best.nx = -best.nx;
     best.ny = -best.ny;
   }
-  return { point: best.point, normal: vec2(best.nx, best.ny) };
+  // dist は縁までの距離（v108。新ステージ組で、雑魚が壁にめり込むかを見るのに使う）
+  return { point: best.point, normal: vec2(best.nx, best.ny), dist: best.d };
 }
 // px。縁のどちらが水の側かを調べる時に、辺から離す距離（ゲームの座標）
 const SKETCH_EDGE_PROBE = 6;
@@ -2131,7 +2128,7 @@ function sketchStage(def, opts) {
 
 // ===== 新ステージ組（v106 から。どりゃどりゃさんの手描きの「ステージ1」をそのまま写した組） =====
 // 絵は上の壁と下の壁の2本の線で描かれた通路なので、2本の線をそのまま持つ。数字は絵（横 2560 にした単位）の上の座標。
-// SKETCH_B_SCALE を掛けてゲームの座標にし、細すぎる所は SKETCH_B_MIN_WIDTH まで左右に広げる。
+// SKETCH_B_SCALE を掛けてゲームの座標にする（縦も横も同じ倍率なので、地形の形は絵のまま）。
 // 最後は ⊗ の位置にゴールの壁（突き破るとクリア）を立て、その向こうに GOAL_RUNOUT だけ通路を延ばす
 const SKETCH_B1 = {
   start: [237, 233],
@@ -2168,7 +2165,7 @@ function nearestOnLine(line, p) {
   return best;
 }
 
-// 折れ線を、間隔が step 以下になるように点を足す。広げる処理が長い直線の途中でも効くように
+// 折れ線を、間隔が step 以下になるように点を足す。ボットの通り道を長い直線の途中にも作るため
 function resampleLine(line, step) {
   const out = [line[0]];
   for (let i = 1; i < line.length; i++) {
@@ -2182,30 +2179,6 @@ function resampleLine(line, step) {
   return out;
 }
 
-// 2本の壁の間が minWidth より狭い所を、両側へ半分ずつ押し広げる。相手の壁は押す前の形で測る（両側が同時に動くので、
-// 押し広げた後の幅がちょうど minWidth になる）。曲がり角で一度に合わない所があるので、SKETCH_B_WIDEN_PASSES 回くり返す
-function widenCorridor(top, bottom, minWidth) {
-  const push = function (line, other) {
-    return line.map(function (p) {
-      const near = nearestOnLine(other, p);
-      if (near.d >= minWidth || near.d <= 0) {
-        return p;
-      }
-      const k = (minWidth - near.d) / 2 / near.d;
-      return vec2(p.x + (p.x - near.point.x) * k, p.y + (p.y - near.point.y) * k);
-    });
-  };
-  let a = top;
-  let b = bottom;
-  for (let i = 0; i < CONFIG.SKETCH_B_WIDEN_PASSES; i++) {
-    const na = push(a, b);
-    const nb = push(b, a);
-    a = na;
-    b = nb;
-  }
-  return { top: a, bottom: b };
-}
-
 function wallStage(def, opts) {
   const k = CONFIG.SKETCH_B_SCALE;
   const P = function (p) { return vec2((p[0] - def.start[0]) * k, (p[1] - def.start[1]) * k); };
@@ -2213,42 +2186,13 @@ function wallStage(def, opts) {
   const dir = vec2(Math.cos(startAngle), Math.sin(startAngle));
   const introTime = CONFIG.INTRO_ENTER_TIME + CONFIG.COUNTDOWN_FROM * CONFIG.COUNTDOWN_STEP;
   const runway = CONFIG.INTRO_SPEED * introTime + CONFIG.RUNWAY_WALL_MARGIN;
+  // 地形は絵の線をそのまま拡大するだけ（v108）。押し広げや引き伸ばしはしない（形を絵のまま保つため）
   const step = CONFIG.SKETCH_B_RESAMPLE;
-  const topRaw = resampleLine(def.top.map(P), step);
-  const bottomRaw = resampleLine(def.bottom.map(P), step);
-  // 進む向きにだけ伸ばす（v107）。点ごとに、上下の壁の一番近い点の真ん中（道の真ん中の線の上の点）を伸ばし、
-  // 真ん中の線からのずれ（壁までの距離や、道の中の上下の位置）はそのまま足し戻す
-  const keepFrom = P([CONFIG.SKETCH_B_KEEP_FROM.x, CONFIG.SKETCH_B_KEEP_FROM.y]);
-  const keepTo = P([CONFIG.SKETCH_B_KEEP_TO.x, CONFIG.SKETCH_B_KEEP_TO.y]);
-  const stretchMid = function (m) {
-    const a = CONFIG.SKETCH_B_STRETCH;
-    if (m.x < keepFrom.x) {
-      // 伸ばさない区間より前：スタートを原点にそのまま伸ばす
-      return vec2(m.x * a, m.y * a);
-    }
-    if (m.x <= keepTo.x) {
-      // 伸ばさない区間の中：区間の始まりがずれたぶんだけ平行に動かす（間隔は変えない）
-      return vec2(m.x + keepFrom.x * (a - 1), m.y + keepFrom.y * (a - 1));
-    }
-    // 区間より後：伸ばしたうえで、区間を伸ばさなかったぶん（区間の長さ × (a - 1)）だけ手前へ詰める
-    return vec2(m.x * a - (keepTo.x - keepFrom.x) * (a - 1), m.y * a - (keepTo.y - keepFrom.y) * (a - 1));
-  };
-  const midOf = function (p) {
-    const nt = nearestOnLine(topRaw, p).point;
-    const nb = nearestOnLine(bottomRaw, p).point;
-    return vec2((nt.x + nb.x) / 2, (nt.y + nb.y) / 2);
-  };
-  const stretch = function (p) {
-    const m = midOf(p);
-    const m2 = stretchMid(m);
-    return vec2(m2.x + (p.x - m.x), m2.y + (p.y - m.y));
-  };
-  const wide = widenCorridor(resampleLine(topRaw.map(stretch), step), resampleLine(bottomRaw.map(stretch), step), CONFIG.SKETCH_B_MIN_WIDTH);
-  const top = wide.top;
-  const bottom = wide.bottom;
+  const top = resampleLine(def.top.map(P), step);
+  const bottom = resampleLine(def.bottom.map(P), step);
 
   // ゴールの壁。⊗ から一番近い上下の壁の点を結ぶ線の上に、通路をふさぐ向きで立てる。両端は壁に GOAL_WALL_BURY だけ埋める
-  const goal = stretch(P(def.goal));
+  const goal = P(def.goal);
   const gt = nearestOnLine(top, goal).point;
   const gb = nearestOnLine(bottom, goal).point;
   const across = Math.atan2(gt.y - gb.y, gt.x - gb.x);
@@ -2303,14 +2247,26 @@ function wallStage(def, opts) {
   // ウニ。壁に張り付けるものは、一番近い縁の点から水の側へ URCHIN_RADIUS × URCHIN_WALL_OUT だけ出す（0 で体の半分が埋まる）
   const urchins = [];
   for (const p of def.urchinsWall) {
-    const e = nearestWaterEdge(water, stretch(P(p)));
+    const e = nearestWaterEdge(water, P(p));
     const out = CONFIG.URCHIN_RADIUS * CONFIG.URCHIN_WALL_OUT;
     urchins.push({ x: e.point.x + e.normal.x * out, y: e.point.y + e.normal.y * out, wallNormal: e.normal });
   }
   for (const p of def.urchinsFree) {
-    const q = stretch(P(p));
+    const q = P(p);
     urchins.push({ x: q.x, y: q.y, wallNormal: null });
   }
+
+  // 雑魚。細い所（③の通路など）で、雑魚の体が壁にめり込む位置に描かれているものは、その場所の上下の壁の真ん中へ寄せる。
+  // 絵の × は通路の真ん中のつもりで描かれていて、通路が雑魚とほぼ同じ太さなので、少しのずれでもめり込んで見えるため（v108）
+  const enemies = def.enemies.map(function (p) {
+    const q = P(p);
+    if (nearestWaterEdge(water, q).dist >= CONFIG.ENEMY_RADIUS) {
+      return q;
+    }
+    const nt = nearestOnLine(top, q).point;
+    const nb = nearestOnLine(bottom, q).point;
+    return vec2((nt.x + nb.x) / 2, (nt.y + nb.y) / 2);
+  });
 
   // ボットの通り道（検証用）。上の壁の点ごとに、一番近い下の壁の点との真ん中
   const botPath = [];
@@ -2333,7 +2289,7 @@ function wallStage(def, opts) {
     height: maxY + margin,
     timeLimit: opts.timeLimit,
     rocks: [],
-    enemies: def.enemies.map(function (p) { return stretch(P(p)); }),
+    enemies: enemies,
     breakables: [],
     botPath: botPath,
     // ゴールは壁。goalPos は壁の真ん中（黄色い目標物は描かない）
@@ -2540,7 +2496,7 @@ const STAGES_NORMAL = [
 ];
 // 新ステージ組（v106）。今はステージ1だけ。回転アタックとドリフトは使えない（ボスを倒すごとに解放していく予定）
 // 制限時間は、何も倒さないボットのタイム（SKETCH_B1_BOT_TIME）の SKETCH_B_TIME_RATE 倍。ほかのステージ（約1.5倍）よりかなりゆるい
-const SKETCH_B1_BOT_TIME = 34.4; // 秒。何も倒さないボットがゴールの壁を突き破るまでのタイム（v107 で道を進む向きに 1.5 倍にして測り直し。v106 は 24.3）。制限時間は 34.4 × 2.5 = 86 秒
+const SKETCH_B1_BOT_TIME = 35.4; // 秒。何も倒さないボットがゴールの壁を突き破るまでのタイム（v108 で絵を縦横そのまま 1.5 倍にして測り直し。v107 は 34.4）。制限時間は 35.4 × 2.5 = 88.5 秒
 const STAGES_FRESH = [
   wallStage(SKETCH_B1, { label: 'STAGE 1', timeLimit: SKETCH_B1_BOT_TIME * CONFIG.SKETCH_B_TIME_RATE, abilities: { spin: false, drift: false } }),
 ];
@@ -2865,7 +2821,8 @@ function createGame() {
 
     // spawnAge: 湧いてからの時間。最初からいる雑魚は湧き終わっている扱い（当たり判定あり、薄くしない）
     state.enemies = stage.enemies.map(function (p) {
-      return { pos: vec2(p.x, p.y), alive: true, flash: 0, spawnAge: CONFIG.ROOM_SPAWN_FADE_TIME };
+      // bumpTouch：倒せない向きで重なっている間 true（v108。重なっている間に何度も減速しないように）
+      return { pos: vec2(p.x, p.y), alive: true, flash: 0, spawnAge: CONFIG.ROOM_SPAWN_FADE_TIME, bumpTouch: false };
     });
 
     // ひび割れ岩。動き出したか（moving）と、転がって見せる回転角を持つ
@@ -2976,7 +2933,7 @@ function createGame() {
     state.camera = vec2(state.fish.pos.x, state.fish.pos.y);
 
     // 検証用のカウンタ。挙動には影響しない
-    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0, bossInsideIgnored: 0, blastHits: 0, urchinHits: 0, goalBroken: -1 };
+    state.stats = { trapHits: 0, bottlesBroken: 0, bagged: 0, bagsShaken: 0, kills: 0, spinKills: 0, damaged: 0, spins: 0, hitstops: [], hitFx: [], damageAngles: [], stageUps: [], roomSpawns: 0, drifts: 0, driftReleases: 0, rocksBroken: 0, collapses: 0, driftCooldownResets: 0, driftBlocked: 0, billHits: 0, billRockBreaks: 0, impales: 0, sharkBites: 0, sharkDashes: 0, killInvincibles: 0, bossAttackHits: 0, octoSwings: 0, octoTentacleHits: 0, octoTentacleCuts: 0, deepSuckTime: 0, kaniSwings: 0, kaniClawHits: 0, kaniClawBreaks: 0, bossHitBonuses: 0, bossBounces: 0, damageNumbers: 0, hitFxInside: 0, bossInsideIgnored: 0, blastHits: 0, urchinHits: 0, goalBroken: -1, bumps: 0 };
     state.lastDamageAngleDeg = -1; // 最後に被弾した時の角度。-1はまだ被弾していない
     state.boostFxTimer = 0;    // 次の回転加速の残像を置くまでの残り時間
   }
@@ -4548,6 +4505,18 @@ function createGame() {
 
   // 被弾。HPを後で足す時はここに1行足す
   // targetPos は当たった相手の位置。デバッグ表示用に、進行方向から何度の位置だったかを記録する
+  // 雑魚（とボス）に、倒せない向きで当たった時（v108）。カブトガニと同じ減速（slowFish）だけで、積んだ速さは失わない。
+  // 「最後の被弾」の角度の表示は、今までのダメージと同じく残す
+  function onBumped(targetPos) {
+    const fish = state.fish;
+    const toTarget = Math.atan2(targetPos.y - fish.pos.y, targetPos.x - fish.pos.x);
+    state.lastDamageAngleDeg = Math.abs(angleDiff(toTarget, fish.angle)) / DEG;
+    state.stats.damageAngles.push(state.lastDamageAngleDeg);
+    slowFish();
+    state.stats.bumps++;
+  }
+
+  // ダメージ（積んだ速さが全部 0）。v108 から使うのは突石（迫り岩・動かない突石）に当たった時だけ
   function onDamaged(targetPos) {
     const fish = state.fish;
     const toTarget = Math.atan2(targetPos.y - fish.pos.y, targetPos.x - fish.pos.x);
@@ -5117,7 +5086,7 @@ function createGame() {
       if (overlap) {
         continue;
       }
-      state.enemies.push({ pos: p, alive: true, flash: 0, spawnAge: 0, spawned: true });
+      state.enemies.push({ pos: p, alive: true, flash: 0, spawnAge: 0, spawned: true, bumpTouch: false });
       state.stats.roomSpawns++;
       return;
     }
@@ -5349,6 +5318,8 @@ function createGame() {
       const bodyHit = hitsBody(enemy.pos, 0, CONFIG.ENEMY_RADIUS);
       const billHit = billTouchesBody(enemy.pos, 0, CONFIG.ENEMY_RADIUS);
       if (!bodyHit && !billHit) {
+        // 離れた。次に触れた時はまた減速する（v108）
+        enemy.bumpTouch = false;
         continue;
       }
       if (billHit) {
@@ -5377,10 +5348,14 @@ function createGame() {
         continue;
       }
       if (fish.invincible > 0) {
-        // 被弾直後はすり抜ける
+        // 倒した直後の無敵の間はすり抜ける
         continue;
       }
-      onDamaged(enemy.pos);
+      // 横や後ろから当たった（v108）：カブトガニと同じ減速。押し戻さずにすり抜け、重なっている間は1回だけ
+      if (!enemy.bumpTouch) {
+        enemy.bumpTouch = true;
+        onBumped(enemy.pos);
+      }
     }
   }
 
@@ -5733,7 +5708,8 @@ function createGame() {
       addBossHitBonus('normal');
     } else {
       if (fish.invincible <= 0) {
-        onDamaged(boss.pos);
+        // v108：雑魚と同じく、ダメージではなくカブトガニと同じ減速（この仮のボスは BOSS_HIT_COOLDOWN で連続の当たりを止めている）
+        onBumped(boss.pos);
       }
     }
     if (boss.hp <= 0) {
