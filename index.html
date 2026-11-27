@@ -2,6 +2,8 @@
 <meta charset="utf-8">
 <title>鮮度限界突破</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<!-- スマホ（v112）：触った時に拡大・スクロールしないよう、画面の幅に合わせて拡大を止める -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
 <style>
   /* レイアウト: 画面いっぱいのCanvas1枚。HUDはその上に重ねる。深海の単一テーマで固定 */
@@ -92,7 +94,28 @@
     color: var(--fg);
     font-family: var(--font-hud);
     overflow: hidden;
+    /* スマホ（v112）：指の動きをゲームの操作だけに使う（スクロール・拡大・長押しの選択をさせない） */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
+  /* スマホの回転・ドリフトのボタン（v112）。大きさ・位置・濃さは CONFIG の TOUCH_BUTTON_* を JS で入れる */
+  .touch-button {
+    position: fixed;
+    bottom: 0;
+    border-radius: 50%;
+    border: 2px solid var(--fg);
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-hud);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+    z-index: 5;
+  }
+  .touch-button[hidden] { display: none; }
   #stage {
     position: fixed;
     inset: 0;
@@ -249,6 +272,17 @@
   /* 遊んでいる間に右上で回転とドリフトを切り替えるボタン。HUD は触れない（pointer-events: none）ので、ここだけ触れるようにする */
   .hud-toggles { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; pointer-events: auto; }
   .hud-toggles .toggle { min-width: 0; font-size: 12px; padding: 2px 8px; }
+  /* スマホの縦向き（v112）。横幅が足りず、文字とスコアゲージと右上のボタンが重なるので、
+     細かい数字（速さの内訳・ドリフト・最後の被弾）を隠して文字を小さくし、ゲージは上の表示の下へずらす */
+  @media (orientation: portrait) and (max-width: 700px) {
+    .hud { font-size: 12px; gap: 8px; padding-block: 8px; }
+    .hud .label { font-size: 10px; }
+    .hud .big { font-size: 18px; }
+    .hud .detail { display: none; }
+    .hud-toggles { flex-wrap: wrap; max-width: 170px; gap: 4px; }
+    .hud-toggles .toggle { font-size: 10px; padding: 2px 5px; white-space: nowrap; }
+    .score-gauge { width: 70vw !important; top: calc(132px + env(safe-area-inset-top, 0px)) !important; }
+  }
   /* マウスの位置に出す輪。大きさと線の太さはスクリプトから CURSOR_* で決める。左ボタンを押している間（held）は黄色にして中を塗る */
   .cursor-ring {
     position: fixed;
@@ -390,6 +424,9 @@
 </style>
 
 <canvas id="stage"></canvas>
+<!-- スマホの回転・ドリフトのボタン（v112）。指で触った時だけ出す -->
+<button class="touch-button" id="touchDrift" type="button" hidden>ドリフト</button>
+<button class="touch-button" id="touchSpin" type="button" hidden>回転</button>
 
 <div class="hud">
   <div class="col">
@@ -398,16 +435,16 @@
     <div class="big limit" id="hudLimit">0.0</div>
     <div class="label">TIME</div>
     <div id="hudTime">0.00</div>
-    <div class="label">SPEED 入力 + 回転 + 撃破 + ドリフト</div>
-    <div id="hudSpeed">0 = 0 + 0</div>
+    <div class="label detail">SPEED 入力 + 回転 + 撃破 + ドリフト</div>
+    <div class="detail" id="hudSpeed">0 = 0 + 0</div>
   </div>
   <div class="col right">
     <div class="label" id="hudBossLabel">BOSS</div>
     <div class="big" id="hudBoss">--</div>
-    <div class="label">ドリフト</div>
-    <div id="hudDrift">--</div>
-    <div class="label" id="hudDamageLabel">最後の被弾（正面から）</div>
-    <div id="hudDamage">--</div>
+    <div class="label detail">ドリフト</div>
+    <div class="detail" id="hudDrift">--</div>
+    <div class="label detail" id="hudDamageLabel">最後の被弾（正面から）</div>
+    <div class="detail" id="hudDamage">--</div>
     <div class="hud-toggles">
       <button class="toggle" id="hudSpinToggle" type="button">回転 ON</button>
       <button class="toggle" id="hudDriftToggle" type="button">ドリフト ON</button>
@@ -592,6 +629,13 @@ const CONFIG = {
   SPIN_DURATION: 0.5,           // 秒。回転アタックの持続時間
   SPIN_COOLDOWN: 0.3,           // 秒。回転が終わってから次を出せるまでの時間
   // マウス。向きはボタンを押さなくても、いつもカーソルの方へ合わせていく（方向キーを押している間は方向キーが優先）
+  TOUCH_BUTTON_SIZE: 96,        // px（画面）。スマホの回転・ドリフトのボタンの直径（v112）
+  TOUCH_BUTTON_MARGIN: 24,      // px（画面）。画面の端（下と左右）からボタンまで
+  TOUCH_BUTTON_ALPHA: 0.45,     // 0〜1。ボタンのふだんの濃さ。押している間は TOUCH_BUTTON_ALPHA_HELD
+  TOUCH_BUTTON_ALPHA_HELD: 0.85,
+  TOUCH_BUTTON_FONT: 18,        // px（画面）。ボタンの文字の大きさ
+  TOUCH_MOUSE_IGNORE_TIME: 1.0, // 秒。指で触った後、ブラウザがまねて送ってくるマウスのクリックを無視する長さ（タップでドリフトが出ないように）
+  PORTRAIT_MIN_VIEW_WIDTH: 800, // px（ゲームの長さ）。縦長の画面で、横に最低どれだけ映すか（v112）。足りない時はそのぶん引いて映す
   MOUSE_DRIFT_BUTTON: 0,        // ドリフトのマウスのボタン。0 = 左クリック。スペース（DRIFT_KEY）と同じドリフトになる
   MOUSE_ALIGN_ANGLE_DEG: 10,    // 度。カーソルの向きと魚の向きの差がこれ以内なら「向ききった」とみなして加速する。
                                 // 方向キー（INPUT_ALIGN_ANGLE_DEG）より厳しくして、急な曲がりでは加速が溜まらないようにする
@@ -9246,10 +9290,16 @@ function createRenderer(game, canvas) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const w = canvas.width;
     const h = canvas.height;
-    // 引き具合のぶん、映す縦の広さを広げる（拡大率を下げる）
-    const scale = h / (CONFIG.VIEW_HEIGHT * game.state.zoom);
+    // 引き具合のぶん、映す縦の広さを広げる（拡大率を下げる）。
+    // 縦長の画面（v112）では、横に映る広さが PORTRAIT_MIN_VIEW_WIDTH に足りないぶん、さらに引く
+    let portrait = 1;
+    const plainViewW = CONFIG.VIEW_HEIGHT * game.state.zoom * w / h;
+    if (plainViewW < CONFIG.PORTRAIT_MIN_VIEW_WIDTH) {
+      portrait = CONFIG.PORTRAIT_MIN_VIEW_WIDTH / plainViewW;
+    }
+    const viewH = CONFIG.VIEW_HEIGHT * game.state.zoom * portrait;
+    const scale = h / viewH;
     const viewW = w / scale;
-    const viewH = CONFIG.VIEW_HEIGHT * game.state.zoom;
     const state = game.state;
     // 風切りの線を出す範囲として、画面に映る大きさをゲームに教える
     game.setViewSize(viewW, viewH);
@@ -10476,6 +10526,10 @@ function start() {
   // pointerdown / pointerup は、別のボタンを押している最中に押した2つ目のボタンでは発生しない
   // （2つ目は pointermove として届く）ため、左を押したまま右クリックした回転アタックが拾えない
   canvas.addEventListener('mousedown', function (e) {
+    // 指で触った直後にブラウザがまねて送ってくるクリックは無視する（左クリック＝ドリフトが出てしまうため。v112）
+    if (performance.now() - touchState.lastAt < CONFIG.TOUCH_MOUSE_IGNORE_TIME * 1000) {
+      return;
+    }
     mouseScreen.x = e.clientX;
     mouseScreen.y = e.clientY;
     mouseScreen.known = true;
@@ -10488,19 +10542,129 @@ function start() {
   });
   // 離したのは画面の外でも拾えるよう window で受ける
   window.addEventListener('mouseup', function (e) {
+    if (performance.now() - touchState.lastAt < CONFIG.TOUCH_MOUSE_IGNORE_TIME * 1000) {
+      return;
+    }
     game.mouseUp(e.button);
     if (e.button === CONFIG.MOUSE_DRIFT_BUTTON) {
       cursorState.held = false;
       updateCursorRing();
     }
   });
-  // タッチやペンはボタンの区別がないので、回転アタックのボタンと同じに扱う。マウスは上の mousedown に任せる
+  // ---------- スマホ（v112）：指で触った所へ向かう ----------
+  // 画面（ボタン以外）に置いた指の位置を、マウスのカーソルと同じ「向かう先」にする。離した後も最後の位置へ向かい続ける。
+  // 指は1本だけ追う（steerId）。ボタンを押している指とは別の指で向きを変えられる。
+  // used：一度でも指で触ったか（ボタンを出すかどうか）。lastAt：最後に指で触った時刻（まねのクリックを無視するため）
+  const touchState = { steerId: null, used: false, lastAt: -Infinity };
+  function steerByTouch(e) {
+    if (mouseScreen.known) {
+      // 袋を振りほどく判定に、前回からの横の動きを渡す（マウスを振るのと同じ）
+      game.mouseShake(e.clientX - mouseScreen.x);
+    }
+    mouseScreen.x = e.clientX;
+    mouseScreen.y = e.clientY;
+    mouseScreen.known = true;
+  }
   canvas.addEventListener('pointerdown', function (e) {
     if (e.pointerType === 'mouse') {
       return;
     }
+    e.preventDefault();
+    touchState.used = true;
+    touchState.lastAt = performance.now();
+    if (touchState.steerId === null) {
+      touchState.steerId = e.pointerId;
+      // 前に指を離した所からの横の動きを「振った」と数えないよう、置いた瞬間は位置だけ合わせる
+      mouseScreen.known = false;
+      steerByTouch(e);
+    }
+  });
+  window.addEventListener('pointermove', function (e) {
+    if (e.pointerType === 'mouse' || e.pointerId !== touchState.steerId) {
+      return;
+    }
+    touchState.lastAt = performance.now();
+    steerByTouch(e);
+  });
+  function endSteer(e) {
+    if (e.pointerId === touchState.steerId) {
+      touchState.steerId = null;
+      touchState.lastAt = performance.now();
+    }
+  }
+  window.addEventListener('pointerup', endSteer);
+  window.addEventListener('pointercancel', endSteer);
+
+  // 回転・ドリフトのボタン。回転は押した瞬間（右クリックと同じ）、ドリフトは押している間（左クリック・スペースと同じ）
+  const touchSpin = document.getElementById('touchSpin');
+  const touchDrift = document.getElementById('touchDrift');
+  for (const button of [touchSpin, touchDrift]) {
+    button.style.width = CONFIG.TOUCH_BUTTON_SIZE + 'px';
+    button.style.height = CONFIG.TOUCH_BUTTON_SIZE + 'px';
+    button.style.fontSize = CONFIG.TOUCH_BUTTON_FONT + 'px';
+    button.style.opacity = String(CONFIG.TOUCH_BUTTON_ALPHA);
+    // 下の端は、ノッチやホームバーのある画面ではその分だけ上げる
+    button.style.marginBottom = 'calc(' + CONFIG.TOUCH_BUTTON_MARGIN + 'px + env(safe-area-inset-bottom))';
+  }
+  touchDrift.style.left = 'calc(' + CONFIG.TOUCH_BUTTON_MARGIN + 'px + env(safe-area-inset-left))';
+  touchSpin.style.right = 'calc(' + CONFIG.TOUCH_BUTTON_MARGIN + 'px + env(safe-area-inset-right))';
+  function holdLook(button, held) {
+    if (held) {
+      button.style.opacity = String(CONFIG.TOUCH_BUTTON_ALPHA_HELD);
+    } else {
+      button.style.opacity = String(CONFIG.TOUCH_BUTTON_ALPHA);
+    }
+  }
+  touchSpin.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    touchState.used = true;
+    touchState.lastAt = performance.now();
+    holdLook(touchSpin, true);
     game.mouseDown(CONFIG.SPIN_MOUSE_BUTTON);
   });
+  touchDrift.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    touchState.used = true;
+    touchState.lastAt = performance.now();
+    // 指がボタンの外へずれても離した時を受け取れるよう、この指をボタンにつかまえておく
+    touchDrift.setPointerCapture(e.pointerId);
+    holdLook(touchDrift, true);
+    game.mouseDown(CONFIG.MOUSE_DRIFT_BUTTON);
+  });
+  function releaseSpin() {
+    holdLook(touchSpin, false);
+  }
+  function releaseDrift() {
+    touchState.lastAt = performance.now();
+    holdLook(touchDrift, false);
+    game.mouseUp(CONFIG.MOUSE_DRIFT_BUTTON);
+  }
+  touchSpin.addEventListener('pointerup', releaseSpin);
+  touchSpin.addEventListener('pointercancel', releaseSpin);
+  touchDrift.addEventListener('pointerup', releaseDrift);
+  touchDrift.addEventListener('pointercancel', releaseDrift);
+  for (const button of [touchSpin, touchDrift]) {
+    button.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+    });
+  }
+  // 今のステージと設定で、回転（'spin'）・ドリフト（'drift'）を使えるか（ゲームの中の abilityOn と同じ決め方）
+  function touchAbility(name) {
+    if (!SETTINGS[name]) {
+      return false;
+    }
+    const ab = game.currentStage().abilities;
+    if (ab && ab[name] === false) {
+      return false;
+    }
+    return true;
+  }
+  // ボタンを出すか。指で触ったことがあり、ゲームの画面で（メニューとステージセレクトの間は出さない）、使える時だけ
+  function updateTouchButtons(s) {
+    const playing = touchState.used && !s.title && stageSelect.hidden;
+    touchSpin.hidden = !(playing && touchAbility('spin'));
+    touchDrift.hidden = !(playing && touchAbility('drift'));
+  }
   // 右クリックのメニューで操作が止まらないようにする
   canvas.addEventListener('contextmenu', function (e) {
     e.preventDefault();
@@ -10515,6 +10679,7 @@ function start() {
 
   function updateHud() {
     const s = game.state;
+    updateTouchButtons(s);
     // 全部クリアしたあとの R でメニューに戻った時に、説明画面をまた出す
     // メニューに戻った瞬間は、組を選ぶ画面から見せる（前に開いていたステージの一覧のままにしない）
     if (s.title && titleScreen.hidden) {
