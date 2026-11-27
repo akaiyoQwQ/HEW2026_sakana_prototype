@@ -116,11 +116,9 @@
     z-index: 5;
   }
   .touch-button[hidden] { display: none; }
+  /* 大きさと位置は、16:9 の枠（v114。CONFIG の SCREEN_ASPECT）に合わせてスクリプトで入れる */
   #stage {
     position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
     display: block;
   }
   .hud {
@@ -635,7 +633,7 @@ const CONFIG = {
   TOUCH_BUTTON_ALPHA_HELD: 0.85,
   TOUCH_BUTTON_FONT: 18,        // px（画面）。ボタンの文字の大きさ
   TOUCH_MOUSE_IGNORE_TIME: 1.0, // 秒。指で触った後、ブラウザがまねて送ってくるマウスのクリックを無視する長さ（タップでドリフトが出ないように）
-  PORTRAIT_MIN_VIEW_WIDTH: 800, // px（ゲームの長さ）。縦長の画面で、横に最低どれだけ映すか（v112）。足りない時はそのぶん引いて映す
+  SCREEN_ASPECT: vec2(16, 9),   // ゲーム画面の枠の横と縦の比（v114）。どの端末でもこの比の枠に収め、余りは背景の色の帯にする（PC と同じ見え方にするため）
   MOUSE_DRIFT_BUTTON: 0,        // ドリフトのマウスのボタン。0 = 左クリック。スペース（DRIFT_KEY）と同じドリフトになる
   MOUSE_ALIGN_ANGLE_DEG: 10,    // 度。カーソルの向きと魚の向きの差がこれ以内なら「向ききった」とみなして加速する。
                                 // 方向キー（INPUT_ALIGN_ANGLE_DEG）より厳しくして、急な曲がりでは加速が溜まらないようにする
@@ -7683,10 +7681,31 @@ function createRenderer(game, canvas) {
     }
   }
 
+  // ゲーム画面の枠（v114）。どの端末でも SCREEN_ASPECT（PC と同じ 16:9）の枠に収め、ウィンドウの真ん中に置く。
+  // 余った所は背景の色の帯になる。frame は枠の左上の位置と大きさ（CSS ピクセル）。マウスや指の位置を枠の中の位置に直すのに使う
+  const frame = { left: 0, top: 0, width: 0, height: 0 };
   function resize() {
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(window.innerWidth * dpr);
-    canvas.height = Math.floor(window.innerHeight * dpr);
+    const aspect = CONFIG.SCREEN_ASPECT.x / CONFIG.SCREEN_ASPECT.y;
+    let fw = window.innerWidth;
+    let fh = window.innerHeight;
+    if (fw / fh > aspect) {
+      // ウィンドウの方が横長：高さに合わせ、左右に帯
+      fw = fh * aspect;
+    } else {
+      // ウィンドウの方が縦長：幅に合わせ、上下に帯
+      fh = fw / aspect;
+    }
+    frame.width = Math.floor(fw);
+    frame.height = Math.floor(fh);
+    frame.left = Math.floor((window.innerWidth - frame.width) / 2);
+    frame.top = Math.floor((window.innerHeight - frame.height) / 2);
+    canvas.style.left = frame.left + 'px';
+    canvas.style.top = frame.top + 'px';
+    canvas.style.width = frame.width + 'px';
+    canvas.style.height = frame.height + 'px';
+    canvas.width = Math.floor(frame.width * dpr);
+    canvas.height = Math.floor(frame.height * dpr);
   }
 
   // 水流線の段階の色。用意した色より段階が多い時は、いちばん上の色を使う
@@ -9280,9 +9299,12 @@ function createRenderer(game, canvas) {
   const lastView = { camX: 0, camY: 0, scale: 1 };
 
   // 画面の座標（CSS ピクセル）をステージの座標に直す。canvas は devicePixelRatio 倍の大きさで描いているので先に掛ける
+  // 枠（v114）が真ん中に寄っているので、先に枠の左上からの位置に直す。枠の外（帯）の位置は、枠の外のステージの座標になる
   function screenToWorld(clientX, clientY) {
     const dpr = window.devicePixelRatio || 1;
-    return vec2(clientX * dpr / lastView.scale + lastView.camX, clientY * dpr / lastView.scale + lastView.camY);
+    const x = (clientX - frame.left) * dpr;
+    const y = (clientY - frame.top) * dpr;
+    return vec2(x / lastView.scale + lastView.camX, y / lastView.scale + lastView.camY);
   }
 
   function render() {
@@ -9292,13 +9314,8 @@ function createRenderer(game, canvas) {
     const w = canvas.width;
     const h = canvas.height;
     // 引き具合のぶん、映す縦の広さを広げる（拡大率を下げる）。
-    // 縦長の画面（v112）では、横に映る広さが PORTRAIT_MIN_VIEW_WIDTH に足りないぶん、さらに引く
-    let portrait = 1;
-    const plainViewW = CONFIG.VIEW_HEIGHT * game.state.zoom * w / h;
-    if (plainViewW < CONFIG.PORTRAIT_MIN_VIEW_WIDTH) {
-      portrait = CONFIG.PORTRAIT_MIN_VIEW_WIDTH / plainViewW;
-    }
-    const viewH = CONFIG.VIEW_HEIGHT * game.state.zoom * portrait;
+    // 枠はいつも 16:9（v114）なので、どの端末でも映る範囲は同じ
+    const viewH = CONFIG.VIEW_HEIGHT * game.state.zoom;
     const scale = h / viewH;
     const viewW = w / scale;
     const state = game.state;
@@ -10566,8 +10583,12 @@ function start() {
     mouseScreen.y = e.clientY;
     mouseScreen.known = true;
   }
-  canvas.addEventListener('pointerdown', function (e) {
+  // 枠の外の帯（v114）を触っても向きを変えられるよう、ページ全体で受ける。ボタンや、メニュー・ステージセレクトの上は除く
+  window.addEventListener('pointerdown', function (e) {
     if (e.pointerType === 'mouse') {
+      return;
+    }
+    if (e.target.closest('button, .title-screen, .stage-select')) {
       return;
     }
     e.preventDefault();
