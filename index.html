@@ -873,6 +873,7 @@ const CONFIG = {
   // ===== 敵との当たり =====
   FRONT_ANGLE_DEG: 90,         // 度。進行方向からこの角度以内に敵の中心があれば「正面から」として倒せる。狭めるとかすった時に被弾しやすくなる
   KILL_INVINCIBLE_TIME: 0.6,    // 秒。敵を倒した瞬間（角は刺さった瞬間）から被弾しない時間。列に突っ込んだ時に、隣の敵に横から当たって止められないようにする
+  HIT_BLINK_INTERVAL: 0.05,     // 秒。被弾・減速の間、魚を消したり出したりする切り替えの間隔（v115）。点滅する長さは被弾なら DAMAGE_INVINCIBLE_TIME、減速なら TRAP_SLOW_TIME
   DAMAGE_INVINCIBLE_TIME: 0.6,  // 秒。被弾してからもう一度被弾しない時間。敵をすり抜けるのに必要
 
   // ===== ヒットストップ =====
@@ -2890,6 +2891,7 @@ function createGame() {
       driftCooldown: 0,        // 次のドリフトを出せるまでの残り時間。0より大きい間は押しても始まらない
       driftHitWindow: 0,       // ダッシュの受付時間の残り。0より大きい間に倒す・壊す・ボスに当てると、クールタイムが0に戻る
       invincible: 0,           // 被弾後の無敵の残り時間
+      blink: 0,                // 被弾・減速の点滅の残り時間（v115）。倒した直後の無敵では点滅させないので invincible とは別に持つ
       bossHitCooldown: 0,      // ボスの攻撃（噛みつき・針・触手・口・振り回すはさみ・甲羅）に次に当たるまでの残り時間。ダメージには使わない
       bossTouch: false,        // 前の判定でボスの体に触れていたか。外から触れた瞬間（false → true）だけダメージを入れるため
       flash: 0,                // ヒットフラッシュの残り時間
@@ -3744,6 +3746,15 @@ function createGame() {
     state.stats.spins++;
   }
 
+  // 被弾・減速の点滅で、今は魚を消しているか（v115）。残り時間を HIT_BLINK_INTERVAL ごとに区切り、奇数の区間で消す
+  function isFishBlinkedOut() {
+    const fish = state.fish;
+    if (fish.blink <= 0) {
+      return false;
+    }
+    return Math.floor(fish.blink / CONFIG.HIT_BLINK_INTERVAL) % 2 === 1;
+  }
+
   // 回転アタック（'spin'）・ドリフト（'drift'）を今使えるか。設定で切っていないことと、
   // ステージの abilities（v106）で使えないことになっていないことの両方
   function abilityOn(name) {
@@ -4179,6 +4190,8 @@ function createGame() {
   function slowFish() {
     const fish = state.fish;
     fish.slowTimer = CONFIG.TRAP_SLOW_TIME;
+    // 減速の間は点滅させる（v115）。被弾の点滅が残っていれば長い方
+    fish.blink = Math.max(fish.blink, CONFIG.TRAP_SLOW_TIME);
     fish.flash = CONFIG.FLASH_DURATION;
     state.shake = CONFIG.SHAKE_DURATION;
     state.shakeDuration = CONFIG.SHAKE_DURATION;
@@ -4625,6 +4638,8 @@ function createGame() {
     fish.driftBoostHold = 0;
     fish.driftBoostDecayFrom = 0;
     fish.invincible = CONFIG.DAMAGE_INVINCIBLE_TIME;
+    // 無敵の間は点滅させる（v115）
+    fish.blink = Math.max(fish.blink, CONFIG.DAMAGE_INVINCIBLE_TIME);
     triggerHitstop('damage');
     state.stats.damaged++;
   }
@@ -5911,6 +5926,9 @@ function createGame() {
     if (fish.invincible > 0) {
       fish.invincible -= dt;
     }
+    if (fish.blink > 0) {
+      fish.blink -= dt;
+    }
     // 回転ぶんと撃破ぶんの減衰。減り方は同じなので、1つの関数で回す
     decayBonus('spinBonus', dt);
     decayBonus('killBonus', dt);
@@ -6926,6 +6944,7 @@ function createGame() {
     restart: restart,
     update: update,
     currentStage: currentStage,
+    isFishBlinkedOut: isFishBlinkedOut,
     isFinished: isFinished,
     transitionCover: transitionCover,
     setViewSize: setViewSize,
@@ -9559,7 +9578,10 @@ function createRenderer(game, canvas) {
     // 回転エフェクトは、シートの筆の線をそのまま見せるため、ドット絵の層ではなくカジキと同じなめらかな層に描く。
     // 奥側 → 魚 → 手前側の順で重ねて、魚を包んで見せる
     drawSpinFx(state, false);
-    drawFish(state.fish, isDriftBlinkWhite(state));
+    // 被弾・減速の点滅（v115）：消えている間は体だけ描かない（回転のエフェクトと残像は描く）
+    if (!game.isFishBlinkedOut()) {
+      drawFish(state.fish, isDriftBlinkWhite(state));
+    }
     drawSpinFx(state, true);
 
     // ----- 手前の層 -----
