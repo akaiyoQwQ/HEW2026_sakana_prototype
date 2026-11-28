@@ -78,6 +78,8 @@
     --urchin-body: #3a284e; /* ウニ（v106）の体。水の青と岩の灰色のどちらからも浮いて見える濃い紫 */
     --urchin-light: #60467c; /* ウニの体の明るい所 */
     --urchin-spine: #241a32; /* ウニのトゲの根元 */
+    --urchin-spark: #fffbd0; /* ウニの電気（v117）の稲妻の芯。白に近い黄色 */
+    --urchin-spark-glow: #ffd21a; /* ウニの電気のにじみと、体のまわりの光。濃い黄色 */
     --rock-crack: #f2d9a0;  /* ひび割れ岩のひび。中から光が漏れているように見せる明るい色 */
     --rock-dark: #232326;   /* 岩。石の暗い縁とひび、水との境目の縁取り */
     --score-fill: #ffd166;  /* スコアゲージの残っている部分 */
@@ -757,20 +759,27 @@ const CONFIG = {
   // ===== 「キミはどっちで遊ぶ？」の説明の図（v116） =====
   CHOICE_BACK_KEY: 'Escape',    // 選ぶ画面ではメニューへ、説明の画面では選び直しへ戻るキー
   CHOICE_DEMO_SIZE: vec2(960, 360), // px。図のキャンバスの大きさ（中の座標）。画面には縦横比のまま縮めて出す
-  CHOICE_DEMO_SPEED: 1.1,       // ラジアン/秒。カーソル（スティック）の向きが上下に揺れる速さ。上げると魚がせわしなく曲がる
-  CHOICE_DEMO_SWING_DEG: 60,    // 度。カーソル（スティック）の向きが真横から上下に振れる幅
-  CHOICE_DEMO_RADIUS: 170,      // px（図の座標）。魚の中心からカーソル（指）までの距離
-  CHOICE_DEMO_FISH_POS: vec2(480, 180), // px（図の座標）。マウス・指の図の魚の位置
-  CHOICE_DEMO_PAD_FISH_POS: vec2(600, 180), // px（図の座標）。ゲームパッドの図の魚の位置（左にスティックを置くので右に寄せる）
-  CHOICE_DEMO_FISH_SCALE: 0.75, // 魚の絵を、ゲームの中の大きさ（PLAYER_SPRITE_LENGTH）の何倍で描くか
-  CHOICE_DEMO_STICK_POS: vec2(190, 180), // px（図の座標）。スティックの土台の中心
-  CHOICE_DEMO_STICK_BASE: 92,   // px。スティックの土台の半径
-  CHOICE_DEMO_STICK_KNOB: 40,   // px。スティックの頭の半径
-  CHOICE_DEMO_STICK_TILT: 50,   // px。倒した時に頭が土台の中心から動く距離
-  CHOICE_DEMO_ARROW: 150,       // px。倒した向きの矢印の長さ（スティックの中心から）。土台（CHOICE_DEMO_STICK_BASE）より長くして外へはみ出させる
-  CHOICE_DEMO_BUBBLES: 26,      // 個。後ろへ流れる泡の数（魚が勝手に進んでいると見せるため）
-  CHOICE_DEMO_BUBBLE_SPEED: 260, // px/秒（図の座標）。泡が魚の向きと逆へ流れる速さ
-  CHOICE_DEMO_BUBBLE_SIZE: 4,   // px。泡の半径
+  // v117：図の中で魚を本当に泳がせる。曲がる速さ・加速・カメラ・引き具合はゲームと同じ関数（steerTurn など）で動かす
+  CHOICE_DEMO_VIEW_SCALE: 0.75, // 倍。ステージの 1px を図の何 px に描くか（引き具合1倍の時）。0.75 で図の横がゲーム画面の横（1280）と同じ広さ。
+                                // 0.5 だと縦がゲームと同じになるが、図が横長なので魚が小さく見えすぎた
+  CHOICE_DEMO_CURSOR_PATH: [    // px（図の座標）。カーソル（指・スティックの向き）が順に止まる所。最後まで行ったら最初へ。
+    vec2(840, 180),             //   右（まっすぐ進んで加速する）
+    vec2(560, 40),              //   右上（曲がる）
+    vec2(640, 330),             //   右下（逆へ曲がる）
+    vec2(110, 190),             //   左（大きく円を描いて振り返る）
+    vec2(840, 180),             //   右（もう一度振り返る）
+  ],                            //   ゲームパッドは、図の真ん中からこの点への向きにスティックを倒す
+  CHOICE_DEMO_CURSOR_MOVE_TIME: 0.3, // 秒。カーソルを次の所へ動かす時間（人がさっと動かす速さ）
+  CHOICE_DEMO_CURSOR_HOLD_TIME: 1.2, // 秒。カーソルを止めておく時間。止めている間に魚が遅れて向きを合わせる。
+                                // 一周（止まる所の数 ×（動かす＋止める））したら最初からやり直す（加速し続けて画面の外へ飛んでいかないように）
+  CHOICE_DEMO_PAD_LINE: 260,    // px（図の座標）。ゲームパッドの図で、魚から倒した向きへ引く点線の長さ。魚の絵（長さ180くらい）より長くして先を見せる
+  CHOICE_DEMO_STICK_POS: vec2(120, 250), // px（図の座標）。スティックの土台の中心
+  CHOICE_DEMO_STICK_BASE: 72,   // px。スティックの土台の半径
+  CHOICE_DEMO_STICK_KNOB: 32,   // px。スティックの頭の半径
+  CHOICE_DEMO_STICK_TILT: 40,   // px。倒した時に頭が土台の中心から動く距離
+  CHOICE_DEMO_ARROW: 118,       // px。倒した向きの矢印の長さ（スティックの中心から）。土台（CHOICE_DEMO_STICK_BASE）より長くして外へはみ出させる
+  CHOICE_DEMO_BUBBLES: 40,      // 個。水に浮かぶ泡の数。泡は水に止まっているので、魚が進むと後ろへ流れて見える
+  CHOICE_DEMO_BUBBLE_SIZE: 4,   // px（図の座標）。泡の半径
   CHOICE_DEMO_TAP_PERIOD: 1.2,  // 秒。指の図で、触れている所の波紋が広がる周期
   CHOICE_DEMO_TAP_RADIUS: 34,   // px。指の図の、触れている所の丸の半径（波紋はこの2倍まで広がる）
   ROLL_VISUAL_RPS: 10,           // 回転/秒。きりもみの見た目の回る速さ。挙動には影響しない
@@ -1299,6 +1308,23 @@ const CONFIG = {
   URCHIN_HIGHLIGHT: vec2(-0.32, -0.45), // 倍。体の明るい所の中心（体の半径に対する位置）
   URCHIN_HIGHLIGHT_SIZE: vec2(0.28, 0.25), // 倍。体の明るい所の横と縦の半径（体の半径に対する割合）
   URCHIN_SEED: 31,              // トゲのばらつきの乱数の種
+  // ウニの電気（v117）。当たってはいけないと一目で分かるように、まわりにビリビリを出す。見た目だけで当たり判定は変えない
+  URCHIN_SPARK_RING_CHANCE: 0.65, // 0〜1。隣り合うトゲの先どうしを稲妻でつなぐ割合（毎回くじで決めるので、つながる所がちらつく）
+  URCHIN_SPARK_OUT_COUNT: 4,    // 本。トゲの先から外へ走る短い稲妻の数
+  URCHIN_SPARK_OUT_LENGTH: vec2(26, 46), // px。外へ走る稲妻の長さの最小と最大
+  URCHIN_SPARK_OUT_SPREAD_DEG: 30, // 度。外へ走る稲妻が、トゲの向きからどれだけ横へずれるか
+  URCHIN_SPARK_SEGMENTS: 4,     // 稲妻のギザギザの折れ目の数（線を何本に分けるか）
+  URCHIN_SPARK_JITTER: 8,       // px。ギザギザが線から横へずれる最大
+  URCHIN_SPARK_INTERVAL: 0.06,  // 秒。稲妻の形を作り直す間隔。短いほどせわしなくちらつく
+  URCHIN_SPARK_WIDTH: 2.5,      // px。稲妻の芯の太さ
+  URCHIN_SPARK_GLOW: 9,         // px。稲妻のにじみ（芯の下に敷く太い半透明の線）の太さ
+  URCHIN_SPARK_GLOW_ALPHA: 0.55, // 0〜1。にじみの濃さ
+  URCHIN_GLOW_RADIUS: 40,       // px。体のまわりの光が、当たる範囲の外へどれだけはみ出すか
+  URCHIN_GLOW_ALPHA: 0.4,       // 0〜1。体のまわりの光の一番濃い所の濃さ
+  URCHIN_GLOW_PULSE: 1.2,       // 秒。体のまわりの光が明るくなって暗くなる一周の時間
+  URCHIN_GLOW_PULSE_DEPTH: 0.3, // 0〜1。光の明るさの揺れ幅（0 で揺れない）
+  URCHIN_ZAP_TIME: 0.3,         // 秒。当たった瞬間のバチッ（稲妻が太く長く、数も増える）が続く長さ
+  URCHIN_ZAP_SCALE: 2,          // 倍。バチッの一番強い瞬間に、稲妻の長さ・太さ・ずれ・外へ走る本数と光の濃さを何倍にするか
   GOAL_WALL_THICKNESS: 160,     // px。ゴールの壁（v106。突き破るとクリア）の厚さ
   GOAL_WALL_BURY: 60,           // px。ゴールの壁の両端を、上下の壁に埋める長さ。すき間ができないように
   GOAL_RUNOUT: 1200,            // px。ゴールの壁の向こうに延ばす通路の長さ。突き抜けた魚が泳いでいく所。0 で延ばさない
@@ -2952,6 +2978,108 @@ function clamp(v, lo, hi) {
   return v;
 }
 
+// ============================================================
+// 魚の操作の手触り（v117）。ゲームと「どっちで遊ぶ？」の説明の図の両方から呼ぶ。
+// 図だけ別の式で動かすと、ゲームを直した時に図が古い動きのまま残るため、ここ1か所にまとめる
+// ============================================================
+
+// 方向キー・スティックの向き dir（vec2）で操作する時の、向かいたい向きと「向ききった」とみなす角度
+function steerByDirection(dir) {
+  return { angle: Math.atan2(dir.y, dir.x), alignRad: CONFIG.INPUT_ALIGN_ANGLE_DEG * DEG };
+}
+
+// マウス・指の位置 target（ステージの座標）へ向かう時の、向かいたい向きと「向ききった」とみなす角度。
+// 魚の真上近く（MOUSE_DEADZONE_RADIUS 以内）なら null（向きを変えない）
+function steerToPoint(fishPos, target) {
+  const dx = target.x - fishPos.x;
+  const dy = target.y - fishPos.y;
+  if (Math.hypot(dx, dy) <= CONFIG.MOUSE_DEADZONE_RADIUS) {
+    return null;
+  }
+  return { angle: Math.atan2(dy, dx), alignRad: CONFIG.MOUSE_ALIGN_ANGLE_DEG * DEG };
+}
+
+// 速さ speed で曲がれる角速度（ラジアン/秒）。drifting はドリフト中か
+function steerTurnRate(speed, drifting) {
+  // 基本は角速度一定。低速〜入力で加速しきるまでの手触りはこれで決まる
+  const baseRate = CONFIG.TURN_RATE_DEG * DEG;
+  // 入力で加速しきった時の円の半径。これより大回りにはしない
+  // （角速度一定のままだと半径が速度に比例して、回転で積んだ猛スピードでは曲がれなくなるため）
+  const capRadius = (CONFIG.BASE_SPEED + CONFIG.INPUT_SPEED_REF) / baseRate;
+  // その半径を保つのに必要な角速度。加速しきった速度以下では baseRate より小さいので使われない
+  const radiusRate = speed / capRadius;
+  let rate = baseRate;
+  if (radiusRate > baseRate) {
+    rate = radiusRate;
+  }
+  // ドリフト中は角速度を上げて小回りにする
+  if (drifting) {
+    rate = rate * CONFIG.DRIFT_TURN_MULT;
+  }
+  return rate;
+}
+
+// 魚 f の向き（f.angle）を、向かいたい向き target へ角速度 rate で回す。回す前の向きの差を返す（加速の判定に使う）
+function steerTurn(f, target, rate, dt) {
+  const diff = angleDiff(target, f.angle);
+  // 逆方向を押しても急には反転しない。角速度ぶんだけ回るので円を描く
+  const maxTurn = rate * dt;
+  f.angle += clamp(diff, -maxTurn, maxTurn);
+  return diff;
+}
+
+// 向きを合わせている間の入力ぶんの加速。cap は入力の上限（設定で ON の時だけ数。OFF なら null）
+function steerAccel(f, dt, cap) {
+  f.inputSpeed += CONFIG.INPUT_ACCEL_RATE * dt;
+  if (cap !== null && f.inputSpeed > cap) {
+    f.inputSpeed = cap;
+  }
+}
+
+// 入力ぶんの減衰。向きを合わせている間は減らさず、猶予を満タンに戻す（減っている途中ならそこから加速し直す）。
+// 途切れたら INPUT_HOLD_TIME 保ち、そのあと減り始めた時点の量を INPUT_DECAY_TIME で割った速さで0まで減らす
+function steerDecay(f, aligned, dt) {
+  if (aligned) {
+    f.inputHold = CONFIG.INPUT_HOLD_TIME;
+    f.inputDecayFrom = 0;
+    return;
+  }
+  if (f.inputSpeed <= 0) {
+    return;
+  }
+  if (f.inputDecayFrom > 0) {
+    f.inputSpeed -= f.inputDecayFrom / CONFIG.INPUT_DECAY_TIME * dt;
+    if (f.inputSpeed < 0) {
+      f.inputSpeed = 0;
+    }
+    return;
+  }
+  f.inputHold -= dt;
+  if (f.inputHold <= 0) {
+    // 猶予が切れた瞬間の量を覚える。量に関係なく INPUT_DECAY_TIME で0に戻すため
+    f.inputDecayFrom = f.inputSpeed;
+  }
+}
+
+// カメラの中心 cam を、目標 (tx, ty) へ follow（1/秒）の速さでなめらかに寄せる
+function cameraFollowStep(cam, tx, ty, follow, dt) {
+  const k = clamp(follow * dt, 0, 1);
+  cam.x += (tx - cam.x) * k;
+  cam.y += (ty - cam.y) * k;
+}
+
+// 速さから目標の引き具合を決めて、今の引き具合 zoom をなめらかに近づけた値を返す。引く時は速く、戻る時はゆっくり
+function cameraZoomStep(zoom, speed, dt) {
+  // 下だけ止める（START より遅ければ1倍）。上は止めないので、速いほど引き続ける
+  const t = Math.max(0, (speed - CONFIG.CAMERA_ZOOM_SPEED_START) / (CONFIG.CAMERA_ZOOM_SPEED_FULL - CONFIG.CAMERA_ZOOM_SPEED_START));
+  const target = 1 + (CONFIG.CAMERA_ZOOM_MAX - 1) * t;
+  let rate = CONFIG.CAMERA_ZOOM_IN_RATE;
+  if (target > zoom) {
+    rate = CONFIG.CAMERA_ZOOM_OUT_RATE;
+  }
+  return zoom + (target - zoom) * (1 - Math.exp(-rate * dt));
+}
+
 // 点 p が地図のステージの泳げる場所（外側の縁の中で、島の外）にあるか。縁を横切る回数の偶奇で見る。
 // ゲームの処理（体を押し戻す）と描く側（海藻の向き）の両方で使う
 function insideWater(p, water) {
@@ -3715,23 +3843,9 @@ function createGame() {
     return rawSpeed() * state.fish.driftBrake * trap;
   }
 
+  // 曲がる角速度。式は説明の図と同じ steerTurnRate（v117 で外へ出した）
   function turnRate() {
-    // 基本は角速度一定。低速〜入力で加速しきるまでの手触りはこれで決まる
-    const baseRate = CONFIG.TURN_RATE_DEG * DEG;
-    // 入力で加速しきった時の円の半径。これより大回りにはしない
-    // （角速度一定のままだと半径が速度に比例して、回転で積んだ猛スピードでは曲がれなくなるため）
-    const capRadius = (CONFIG.BASE_SPEED + CONFIG.INPUT_SPEED_REF) / baseRate;
-    // その半径を保つのに必要な角速度。加速しきった速度以下では baseRate より小さいので使われない
-    const radiusRate = totalSpeed() / capRadius;
-    let rate = baseRate;
-    if (radiusRate > baseRate) {
-      rate = radiusRate;
-    }
-    // ドリフト中は角速度を上げて小回りにする
-    if (state.fish.driftHeld) {
-      rate = rate * CONFIG.DRIFT_TURN_MULT;
-    }
-    return rate;
+    return steerTurnRate(totalSpeed(), state.fish.driftHeld);
   }
 
   // ---------- 入力 ----------
@@ -3825,7 +3939,7 @@ function createGame() {
   function steerInput() {
     const input = inputVector();
     if (input.x !== 0 || input.y !== 0) {
-      return { angle: Math.atan2(input.y, input.x), alignRad: CONFIG.INPUT_ALIGN_ANGLE_DEG * DEG };
+      return steerByDirection(input);
     }
     const mouse = state.mouseSteer;
     if (!mouse.known) {
@@ -3836,13 +3950,7 @@ function createGame() {
     if (state.inputMode === 'pad') {
       return null;
     }
-    const fish = state.fish;
-    const dx = mouse.target.x - fish.pos.x;
-    const dy = mouse.target.y - fish.pos.y;
-    if (Math.hypot(dx, dy) <= CONFIG.MOUSE_DEADZONE_RADIUS) {
-      return null;
-    }
-    return { angle: Math.atan2(dy, dx), alignRad: CONFIG.MOUSE_ALIGN_ANGLE_DEG * DEG };
+    return steerToPoint(state.fish.pos, mouse.target);
   }
 
   // ゲームパッドのスティックの向き（v116）。PAD_DEADZONE より倒していない時は null を渡す
@@ -4286,7 +4394,7 @@ function createGame() {
       // ウニ（v106）。wallNormal は張り付いた壁から水の側を向く向き（浮いているものは null）。
       // touching は今触れているか（離れるまで2回目の減速を起こさない）。spines は描くトゲ（向きと長さ）を置いた時に一度だけ作る
       urchins: list('urchins').map(function (p, i) {
-        return { pos: vec2(p.x, p.y), wallNormal: p.wallNormal, touching: false, spines: urchinSpines(p.wallNormal, i) };
+        return { pos: vec2(p.x, p.y), wallNormal: p.wallNormal, touching: false, zapAt: -Infinity, spines: urchinSpines(p.wallNormal, i) };
       }),
     };
   }
@@ -4748,6 +4856,8 @@ function createGame() {
       if (hit && !u.touching) {
         slowFish();
         state.stats.urchinHits++;
+        // 当たった時刻（v117）。描く側がこれから URCHIN_ZAP_TIME の間、電気をバチッと強くする
+        u.zapAt = state.realTime;
       }
       u.touching = hit;
     }
@@ -6078,10 +6188,8 @@ function createGame() {
     let aligned = false;
 
     if (hasInput) {
-      const diff = angleDiff(steer.angle, fish.angle);
-      // 逆方向を押しても急には反転しない。角速度ぶんだけ回るので円を描く
-      const maxTurn = turnRate() * dt;
-      fish.angle += clamp(diff, -maxTurn, maxTurn);
+      // 回し方は説明の図と同じ steerTurn（v117）
+      const diff = steerTurn(fish, steer.angle, turnRate(), dt);
 
       // 進行方向と同じ向きの入力なら加速。上限はない（向きを合わせ続ける限り増え続ける）
       if (Math.abs(diff) <= steer.alignRad) {
@@ -6093,11 +6201,12 @@ function createGame() {
           fish.accelFx = true;
         }
         const stageBefore = inputStage();
-        fish.inputSpeed += CONFIG.INPUT_ACCEL_RATE * dt;
         // 設定で入力の上限を ON にしている時だけ、その値で止める（撃破ぶんなど、ほかのぶんには効かない）
-        if (SETTINGS.inputCapOn && fish.inputSpeed > SETTINGS.inputCap) {
-          fish.inputSpeed = SETTINGS.inputCap;
+        let cap = null;
+        if (SETTINGS.inputCapOn) {
+          cap = SETTINGS.inputCap;
         }
+        steerAccel(fish, dt, cap);
         // 段階が上がった瞬間だけ合図を出す。水流線が出ている時だけ（出ていないのに合図だけ出ると変なので）
         if (inputStage() > stageBefore && fish.accelFx && CONFIG.STAGE_UP_FX_ENABLED) {
           spawnStageUpBurst();
@@ -6107,25 +6216,8 @@ function createGame() {
       }
     }
 
-    // 入力ぶんの減衰。向きを合わせている間は減らさず、猶予を満タンに戻す（減っている途中ならそこから加速し直す）。
-    // 途切れたら INPUT_HOLD_TIME 保ち、そのあと減り始めた時点の量を INPUT_DECAY_TIME で割った速さで0まで減らす
-    if (aligned) {
-      fish.inputHold = CONFIG.INPUT_HOLD_TIME;
-      fish.inputDecayFrom = 0;
-    } else if (fish.inputSpeed > 0) {
-      if (fish.inputDecayFrom > 0) {
-        fish.inputSpeed -= fish.inputDecayFrom / CONFIG.INPUT_DECAY_TIME * dt;
-        if (fish.inputSpeed < 0) {
-          fish.inputSpeed = 0;
-        }
-      } else {
-        fish.inputHold -= dt;
-        if (fish.inputHold <= 0) {
-          // 猶予が切れた瞬間の量を覚える。量に関係なく INPUT_DECAY_TIME で0に戻すため
-          fish.inputDecayFrom = fish.inputSpeed;
-        }
-      }
-    }
+    // 入力ぶんの減衰。説明の図と同じ steerDecay（v117）
+    steerDecay(fish, aligned, dt);
 
     // 進む向き。ドリフト中は押した瞬間の向きのまま（頭だけ回って横滑りする）。それ以外は頭の向きに合わせる
     if (!fish.driftHeld) {
@@ -6965,22 +7057,13 @@ function createGame() {
       targetY = state.bossDeathPos.y;
       follow = CONFIG.BOSS_DEATH_CAMERA_FOLLOW;
     }
-    const k = clamp(follow * realDt, 0, 1);
-    state.camera.x += (targetX - state.camera.x) * k;
-    state.camera.y += (targetY - state.camera.y) * k;
+    cameraFollowStep(state.camera, targetX, targetY, follow, realDt);
     updateZoom(realDt);
   }
 
   // 速さから目標の引き具合を決めて、なめらかに近づける。引く時は速く、戻る時はゆっくり
   function updateZoom(realDt) {
-    // 下だけ止める（START より遅ければ1倍）。上は止めないので、速いほど引き続ける
-    const t = Math.max(0, (totalSpeed() - CONFIG.CAMERA_ZOOM_SPEED_START) / (CONFIG.CAMERA_ZOOM_SPEED_FULL - CONFIG.CAMERA_ZOOM_SPEED_START));
-    const target = 1 + (CONFIG.CAMERA_ZOOM_MAX - 1) * t;
-    let rate = CONFIG.CAMERA_ZOOM_IN_RATE;
-    if (target > state.zoom) {
-      rate = CONFIG.CAMERA_ZOOM_OUT_RATE;
-    }
-    state.zoom += (target - state.zoom) * (1 - Math.exp(-rate * realDt));
+    state.zoom = cameraZoomStep(state.zoom, totalSpeed(), realDt);
   }
 
   // ---------- スタート演出 ----------
@@ -7468,7 +7551,13 @@ function createRenderer(game, canvas) {
     urchinLight: token('--urchin-light'),
     urchinSpine: token('--urchin-spine'),
     fg: token('--fg'),
+  };  // ウニの電気の色（v117）。なめらかな層にだけ描くので、colors（ドット絵の層の色の一覧の元）には入れない。
+  // 入れると色の一覧が増えて、ほかのドットの色の置き換わり方が変わってしまうため
+  const sparkColors = {
+    core: token('--urchin-spark'),
+    glow: token('--urchin-spark-glow'),
   };
+
   // 噴射口の火山が予告で赤く染まっていく段の色。岩の色から警告の赤まで BLAST_WARN_STEPS 段。
   // ドットの層の色の一覧に入れるため、ここで作っておく（色の一覧は colors の中身から作る）
   colors.blastWarnSteps = [];
@@ -9824,6 +9913,8 @@ function createRenderer(game, canvas) {
 
     // ----- 真ん中の層（なめらか）：カジキと、その残像と、回転エフェクトの絵 -----
     beginWorld(mainCtx, scale);
+    // ウニの電気（v117）。半透明の光をそのまま見せたいので、色を減らすドット絵の層ではなく、なめらかな層に描く。魚より奥
+    drawUrchinSparks(state);
     drawBoostGhosts(state);
     // 回転エフェクトは、シートの筆の線をそのまま見せるため、ドット絵の層ではなくカジキと同じなめらかな層に描く。
     // 奥側 → 魚 → 手前側の順で重ねて、魚を包んで見せる
@@ -10201,6 +10292,128 @@ function createRenderer(game, canvas) {
     ctx.fill();
   }
 
+  // ===== ウニの電気（v117） =====
+  // 体のまわりの光・トゲの先どうしをつなぐ稲妻・トゲの先から外へ走る稲妻の3つを重ねる。
+  // 稲妻の形は URCHIN_SPARK_INTERVAL ごとに、時刻とウニの番号から作る乱数で作り直す（覚えておく物がいらず、止めている間は形も止まる）
+  function drawUrchinSparks(state) {
+    const list = state.gim.urchins;
+    const t = state.realTime;
+    const tick = Math.floor(t / CONFIG.URCHIN_SPARK_INTERVAL);
+    // 画面に映っているウニだけ描く（稲妻は線の数が多くて重いので）。はみ出す分は、外へ走る稲妻がバチッで伸びた長さまで見込む
+    const reach = CONFIG.URCHIN_RADIUS + CONFIG.URCHIN_SPINE_LENGTH * (1 + CONFIG.URCHIN_SPINE_JITTER) + CONFIG.URCHIN_SPARK_OUT_LENGTH.y * CONFIG.URCHIN_ZAP_SCALE;
+    const halfW = state.viewSize.x / 2 + reach;
+    const halfH = state.viewSize.y / 2 + reach;
+    for (let i = 0; i < list.length; i++) {
+      const u = list[i];
+      if (Math.abs(u.pos.x - state.camera.x) > halfW || Math.abs(u.pos.y - state.camera.y) > halfH) {
+        continue;
+      }
+      // バチッの強さ。当たった瞬間が1で、URCHIN_ZAP_TIME かけて0に戻る
+      const zap = clamp(1 - (t - u.zapAt) / CONFIG.URCHIN_ZAP_TIME, 0, 1);
+      const boost = 1 + (CONFIG.URCHIN_ZAP_SCALE - 1) * zap;
+      drawUrchinGlow(u, t, boost);
+      const rnd = makeRng((tick * 7919 + i * 104729) >>> 0);
+      drawUrchinRing(u, rnd, boost);
+      drawUrchinOutBolts(u, rnd, boost);
+    }
+  }
+
+  // 体のまわりの光。体の縁から、当たる範囲の外 URCHIN_GLOW_RADIUS までを、外へ向かって薄くなる輪で塗る。
+  // 体の上は塗らない（ウニの絵より手前の層に描くので、塗ると紫の体が黄色く濁るため）
+  function drawUrchinGlow(u, t, boost) {
+    const r = CONFIG.URCHIN_RADIUS;
+    const outer = r + CONFIG.URCHIN_SPINE_LENGTH * CONFIG.URCHIN_HIT_SPINE_RATIO + CONFIG.URCHIN_GLOW_RADIUS;
+    const pulse = 1 - CONFIG.URCHIN_GLOW_PULSE_DEPTH * (0.5 + 0.5 * Math.sin(t * TAU / CONFIG.URCHIN_GLOW_PULSE));
+    const grad = ctx.createRadialGradient(u.pos.x, u.pos.y, r, u.pos.x, u.pos.y, outer);
+    grad.addColorStop(0, sparkColors.glow);
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.globalAlpha = clamp(CONFIG.URCHIN_GLOW_ALPHA * pulse * boost, 0, 1);
+    ctx.fillStyle = grad;
+    // 外の丸と、逆回りの体の丸で輪にする（内側は塗らない）
+    ctx.beginPath();
+    ctx.arc(u.pos.x, u.pos.y, outer, 0, TAU);
+    ctx.arc(u.pos.x, u.pos.y, r, TAU, 0, true);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // トゲの先の点。extra はトゲの先からさらに外へ出す量
+  function urchinTip(u, sp, extra) {
+    const d = CONFIG.URCHIN_RADIUS + sp.len + extra;
+    return vec2(u.pos.x + Math.cos(sp.a) * d, u.pos.y + Math.sin(sp.a) * d);
+  }
+
+  // 隣り合うトゲの先どうしをつなぐ稲妻。壁に埋まって描かないトゲをまたぐ所（間が空いている所）はつながない
+  function drawUrchinRing(u, rnd, boost) {
+    const step = TAU / CONFIG.URCHIN_SPINE_COUNT;
+    const sp = u.spines;
+    for (let k = 0; k < sp.length; k++) {
+      const a = sp[k];
+      const b = sp[(k + 1) % sp.length];
+      // 次のトゲまでの角度。1本ぶんより大きく空いていたら、間のトゲが壁に埋まっている
+      const gap = ((b.a - a.a) % TAU + TAU) % TAU;
+      if (gap > step * 1.5) {
+        continue;
+      }
+      if (rnd() > CONFIG.URCHIN_SPARK_RING_CHANCE) {
+        continue;
+      }
+      drawBolt(urchinTip(u, a, 0), urchinTip(u, b, 0), rnd, boost);
+    }
+  }
+
+  // トゲの先から外へ走る短い稲妻。どのトゲから出すかは毎回くじで決める
+  function drawUrchinOutBolts(u, rnd, boost) {
+    const sp = u.spines;
+    if (sp.length === 0) {
+      return;
+    }
+    const count = Math.round(CONFIG.URCHIN_SPARK_OUT_COUNT * boost);
+    const spread = CONFIG.URCHIN_SPARK_OUT_SPREAD_DEG * DEG;
+    const lenMin = CONFIG.URCHIN_SPARK_OUT_LENGTH.x;
+    const lenMax = CONFIG.URCHIN_SPARK_OUT_LENGTH.y;
+    for (let k = 0; k < count; k++) {
+      const s = sp[Math.floor(rnd() * sp.length)];
+      const from = urchinTip(u, s, 0);
+      const a = s.a + (rnd() * 2 - 1) * spread;
+      const len = (lenMin + (lenMax - lenMin) * rnd()) * boost;
+      drawBolt(from, vec2(from.x + Math.cos(a) * len, from.y + Math.sin(a) * len), rnd, boost);
+    }
+  }
+
+  // 稲妻1本。from から to まで、URCHIN_SPARK_SEGMENTS 個の折れ目を横へずらしたギザギザの線。
+  // 太い半透明の線（にじみ）を敷いてから、細い芯を重ねる（ぼかしの機能は重いので使わない）
+  function drawBolt(from, to, rnd, boost) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) {
+      return;
+    }
+    const nx = -dy / len;
+    const ny = dx / len;
+    const seg = CONFIG.URCHIN_SPARK_SEGMENTS;
+    const jitter = CONFIG.URCHIN_SPARK_JITTER * boost;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    for (let k = 1; k < seg; k++) {
+      const f = k / seg;
+      const off = (rnd() * 2 - 1) * jitter;
+      ctx.lineTo(from.x + dx * f + nx * off, from.y + dy * f + ny * off);
+    }
+    ctx.lineTo(to.x, to.y);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = CONFIG.URCHIN_SPARK_GLOW_ALPHA;
+    ctx.strokeStyle = sparkColors.glow;
+    ctx.lineWidth = CONFIG.URCHIN_SPARK_GLOW * boost;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = sparkColors.core;
+    ctx.lineWidth = CONFIG.URCHIN_SPARK_WIDTH * boost;
+    ctx.stroke();
+  }
+
   // カブトガニ。床に張り付いているので、画面の下の手前の影（岩と水草）に隠れないよう、手前の影より後に描く
   function drawCrabs(state) {
     const g = state.gim;
@@ -10499,8 +10712,8 @@ function start() {
     bg: cssColor('--bg'),
   };
   // open：出しているか。step：'pick'（選ぶ）か 'explain'（説明）。mode：選んだ遊び方。
-  // setName / index：メニューで選んだステージ。time・fishAngle・bubbles：説明の図の動き
-  const choice = { open: false, step: 'pick', mode: 'mouse', setName: null, index: 0, time: 0, fishAngle: 0, bubbles: [] };
+  // setName / index：メニューで選んだステージ。demo：説明の図の中の魚とカメラ（resetChoiceDemo で作る）
+  const choice = { open: false, step: 'pick', mode: 'mouse', setName: null, index: 0, demo: null };
   function isFingerDevice() {
     return fingerQuery.matches;
   }
@@ -10535,13 +10748,7 @@ function start() {
       choiceLines.appendChild(div);
     }
     choiceOk.textContent = CHOICE_TEXT.ok[mode];
-    // 図は毎回まっすぐ右を向いたところから始める
-    choice.time = 0;
-    choice.fishAngle = 0;
-    choice.bubbles = [];
-    for (let i = 0; i < CONFIG.CHOICE_DEMO_BUBBLES; i++) {
-      choice.bubbles.push(vec2(Math.random() * CONFIG.CHOICE_DEMO_SIZE.x, Math.random() * CONFIG.CHOICE_DEMO_SIZE.y));
-    }
+    resetChoiceDemo();
     choicePick.hidden = true;
     choiceExplain.hidden = false;
     drawChoiceDemo(0);
@@ -10581,60 +10788,157 @@ function start() {
     closeChoice();
   }
 
-  // 説明の図。ゲームと同じ魚の絵が、ゲームと同じ曲がる速さ（TURN_RATE_DEG）でカーソル・指・スティックの向きへ向く。
-  // 泡を魚の向きと逆へ流して、魚が勝手に進んでいるように見せる
+  // ===== 説明の図（v117：ゲームと同じ動き） =====
+  // 図の中で魚を本当に泳がせる。曲がる速さ・加速と減り方・カメラ・引き具合は、ゲームと同じ関数
+  // （steerTurnRate / steerTurn / steerAccel / steerDecay / cameraFollowStep / cameraZoomStep / steerToPoint / steerByDirection）で動かす。
+  // カーソル（指・スティック）は「さっと動かして止める」を繰り返し、一周したら最初からやり直す
+
+  // 一周の長さ。止まる所の数 ×（動かす時間＋止める時間）。カーソルの道のりから決めるので、道のりを足しても一周の途中で切れない
+  function demoLoopTime() {
+    return CONFIG.CHOICE_DEMO_CURSOR_PATH.length * (CONFIG.CHOICE_DEMO_CURSOR_MOVE_TIME + CONFIG.CHOICE_DEMO_CURSOR_HOLD_TIME);
+  }
+  // 図を最初の形に戻す。魚はステージの原点で右向き・入力ぶん0、カメラはゲームと同じく進む向きの先に置く
+  function resetChoiceDemo() {
+    const fish = { pos: vec2(0, 0), angle: 0, inputSpeed: 0, inputHold: 0, inputDecayFrom: 0 };
+    const demo = {
+      time: 0,
+      fish: fish,
+      camera: vec2(CONFIG.CAMERA_LEAD, 0),
+      zoom: 1,
+      bubbles: [],
+    };
+    // 泡は図に映る広さ（引いた時のぶんも見込んで2倍）にばらまく。画面の外へ出たら反対側へ回す
+    const span = demoBubbleSpan();
+    for (let i = 0; i < CONFIG.CHOICE_DEMO_BUBBLES; i++) {
+      demo.bubbles.push(vec2((Math.random() - 0.5) * span.x, (Math.random() - 0.5) * span.y));
+    }
+    choice.demo = demo;
+  }
+  // 検証用：説明の図の中の様子をブラウザの外から読めるようにする（window.__sakana と同じ扱い）
+  window.__sakanaChoice = choice;
+  // 泡をばらまく広さ（ステージの座標）。図の大きさを VIEW_SCALE で割った広さの、引き具合の最大ぶん
+  function demoBubbleSpan() {
+    const k = CONFIG.CAMERA_ZOOM_MAX / CONFIG.CHOICE_DEMO_VIEW_SCALE;
+    return vec2(CONFIG.CHOICE_DEMO_SIZE.x * k, CONFIG.CHOICE_DEMO_SIZE.y * k);
+  }
+  // 今のカーソルの位置（図の座標）。止まる所の間を、MOVE_TIME かけてなめらかに動かし、HOLD_TIME 止める
+  function demoCursor(time) {
+    const path = CONFIG.CHOICE_DEMO_CURSOR_PATH;
+    const step = CONFIG.CHOICE_DEMO_CURSOR_MOVE_TIME + CONFIG.CHOICE_DEMO_CURSOR_HOLD_TIME;
+    const k = Math.floor(time / step) % path.length;
+    const from = path[(k + path.length - 1) % path.length];
+    const to = path[k];
+    const f = clamp((time - Math.floor(time / step) * step) / CONFIG.CHOICE_DEMO_CURSOR_MOVE_TIME, 0, 1);
+    // 動かし始めと止める前をゆっくりにする（人の手の動き）
+    const e = f * f * (3 - 2 * f);
+    return vec2(from.x + (to.x - from.x) * e, from.y + (to.y - from.y) * e);
+  }
+  // 図の座標 ↔ ステージの座標。カメラの中心が図の真ん中に来る。引き具合が上がるほど広く映す（ゲームと同じ）
+  function demoScale(demo) {
+    return CONFIG.CHOICE_DEMO_VIEW_SCALE / demo.zoom;
+  }
+  function demoToScreen(demo, p) {
+    const k = demoScale(demo);
+    return vec2((p.x - demo.camera.x) * k + CONFIG.CHOICE_DEMO_SIZE.x / 2, (p.y - demo.camera.y) * k + CONFIG.CHOICE_DEMO_SIZE.y / 2);
+  }
+  function demoToWorld(demo, p) {
+    const k = demoScale(demo);
+    return vec2((p.x - CONFIG.CHOICE_DEMO_SIZE.x / 2) / k + demo.camera.x, (p.y - CONFIG.CHOICE_DEMO_SIZE.y / 2) / k + demo.camera.y);
+  }
+  // 図の魚を dt 秒すすめる。ゲームの updateFish の、曲がる・加速・減り方・移動と同じ順番
+  function stepChoiceDemo(dt) {
+    const demo = choice.demo;
+    demo.time += dt;
+    if (demo.time >= demoLoopTime()) {
+      resetChoiceDemo();
+      return;
+    }
+    const fish = demo.fish;
+    const cursor = demoCursor(demo.time);
+    let steer = null;
+    if (choice.mode === 'pad') {
+      // スティックは、図の真ん中からカーソルの所への向きに倒す
+      steer = steerByDirection(vec2(cursor.x - CONFIG.CHOICE_DEMO_SIZE.x / 2, cursor.y - CONFIG.CHOICE_DEMO_SIZE.y / 2));
+    } else {
+      steer = steerToPoint(fish.pos, demoToWorld(demo, cursor));
+    }
+    // 説明の図には撃破・回転・ドリフトのぶんはないので、速さは自動の速さ＋入力ぶんだけ
+    const speed = CONFIG.BASE_SPEED + fish.inputSpeed;
+    let aligned = false;
+    if (steer !== null) {
+      const diff = steerTurn(fish, steer.angle, steerTurnRate(speed, false), dt);
+      if (Math.abs(diff) <= steer.alignRad) {
+        aligned = true;
+        let cap = null;
+        if (SETTINGS.inputCapOn) {
+          cap = SETTINGS.inputCap;
+        }
+        steerAccel(fish, dt, cap);
+      }
+    }
+    steerDecay(fish, aligned, dt);
+    const moved = CONFIG.BASE_SPEED + fish.inputSpeed;
+    fish.pos.x += Math.cos(fish.angle) * moved * dt;
+    fish.pos.y += Math.sin(fish.angle) * moved * dt;
+    cameraFollowStep(demo.camera, fish.pos.x + Math.cos(fish.angle) * CONFIG.CAMERA_LEAD, fish.pos.y + Math.sin(fish.angle) * CONFIG.CAMERA_LEAD, CONFIG.CAMERA_FOLLOW, dt);
+    demo.zoom = cameraZoomStep(demo.zoom, moved, dt);
+  }
+
   function drawChoiceDemo(dt) {
+    stepChoiceDemo(dt);
+    const demo = choice.demo;
     const size = CONFIG.CHOICE_DEMO_SIZE;
-    choice.time += dt;
-    const aim = CONFIG.CHOICE_DEMO_SWING_DEG * DEG * Math.sin(choice.time * CONFIG.CHOICE_DEMO_SPEED);
-    const maxTurn = CONFIG.TURN_RATE_DEG * DEG * dt;
-    choice.fishAngle += clamp(angleDiff(aim, choice.fishAngle), -maxTurn, maxTurn);
-    const head = vec2(Math.cos(choice.fishAngle), Math.sin(choice.fishAngle));
-    const aimDir = vec2(Math.cos(aim), Math.sin(aim));
     const c = demoCtx;
-    // 水。ゲームの背景と同じ、上下が濃く真ん中が明るいグラデーション
+    // 水。ゲームの背景と同じ、上下が濃く真ん中が明るいグラデーション（画面に止まっている）
     const grad = c.createLinearGradient(0, 0, 0, size.y);
     grad.addColorStop(0, demoColors.waterTop);
     grad.addColorStop(0.5, demoColors.waterMid);
     grad.addColorStop(1, demoColors.waterBottom);
     c.fillStyle = grad;
     c.fillRect(0, 0, size.x, size.y);
-    // 泡。画面の外に出たら反対側から戻す
+    // 泡は水に止まっている。カメラから離れすぎたら、ばらまく広さの反対側へ回す
+    const span = demoBubbleSpan();
     c.fillStyle = 'rgba(255, 255, 255, 0.55)';
-    for (const b of choice.bubbles) {
-      b.x = (b.x - head.x * CONFIG.CHOICE_DEMO_BUBBLE_SPEED * dt + size.x) % size.x;
-      b.y = (b.y - head.y * CONFIG.CHOICE_DEMO_BUBBLE_SPEED * dt + size.y) % size.y;
+    for (const b of demo.bubbles) {
+      b.x = demo.camera.x + ((b.x - demo.camera.x + span.x * 1.5) % span.x + span.x) % span.x - span.x / 2;
+      b.y = demo.camera.y + ((b.y - demo.camera.y + span.y * 1.5) % span.y + span.y) % span.y - span.y / 2;
+      const p = demoToScreen(demo, b);
       c.beginPath();
-      c.arc(b.x, b.y, CONFIG.CHOICE_DEMO_BUBBLE_SIZE, 0, TAU);
+      c.arc(p.x, p.y, CONFIG.CHOICE_DEMO_BUBBLE_SIZE, 0, TAU);
       c.fill();
     }
-    let fishPos = CONFIG.CHOICE_DEMO_FISH_POS;
+    const fishScreen = demoToScreen(demo, demo.fish.pos);
+    const cursor = demoCursor(demo.time);
+    // 魚から向かう先への点線。マウス・指はカーソルの所まで、ゲームパッドは倒した向きへ CHOICE_DEMO_PAD_LINE
+    let lineEnd = cursor;
+    let padAim = 0;
     if (choice.mode === 'pad') {
-      fishPos = CONFIG.CHOICE_DEMO_PAD_FISH_POS;
-      drawDemoStick(aim, aimDir);
+      padAim = Math.atan2(cursor.y - size.y / 2, cursor.x - size.x / 2);
+      lineEnd = vec2(fishScreen.x + Math.cos(padAim) * CONFIG.CHOICE_DEMO_PAD_LINE, fishScreen.y + Math.sin(padAim) * CONFIG.CHOICE_DEMO_PAD_LINE);
     }
-    // 魚から向かう先への点線。マウス・指は向かう先まで、ゲームパッドは倒した向きへ同じ長さ
-    const target = vec2(fishPos.x + aimDir.x * CONFIG.CHOICE_DEMO_RADIUS, fishPos.y + aimDir.y * CONFIG.CHOICE_DEMO_RADIUS);
     c.save();
     c.setLineDash([10, 10]);
     c.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     c.lineWidth = 3;
     c.beginPath();
-    c.moveTo(fishPos.x, fishPos.y);
-    c.lineTo(target.x, target.y);
+    c.moveTo(fishScreen.x, fishScreen.y);
+    c.lineTo(lineEnd.x, lineEnd.y);
     c.stroke();
     c.restore();
-    drawDemoFish(fishPos, choice.fishAngle);
+    drawDemoFish(fishScreen, demo.fish.angle, demoScale(demo));
     if (choice.mode === 'mouse') {
-      drawDemoCursor(target);
+      drawDemoCursor(cursor);
     }
     if (choice.mode === 'touch') {
-      drawDemoFinger(target);
+      drawDemoFinger(cursor, demo.time);
+    }
+    if (choice.mode === 'pad') {
+      drawDemoStick(padAim);
     }
   }
-  function drawDemoFish(pos, angle) {
+  // 魚の絵。ゲームと同じ大きさ（PLAYER_SPRITE_LENGTH）に、図の縮め方 scale を掛けて描く
+  function drawDemoFish(pos, angle, scale) {
     const c = demoCtx;
-    const scale = CONFIG.CHOICE_DEMO_FISH_SCALE;
     c.save();
     c.translate(pos.x, pos.y);
     c.rotate(angle);
@@ -10672,10 +10976,10 @@ function start() {
     c.stroke();
   }
   // 指で触れている所。丸と、そこから広がる波紋（押し続けていると分かるように）
-  function drawDemoFinger(pos) {
+  function drawDemoFinger(pos, time) {
     const c = demoCtx;
     const r = CONFIG.CHOICE_DEMO_TAP_RADIUS;
-    const t = (choice.time % CONFIG.CHOICE_DEMO_TAP_PERIOD) / CONFIG.CHOICE_DEMO_TAP_PERIOD;
+    const t = (time % CONFIG.CHOICE_DEMO_TAP_PERIOD) / CONFIG.CHOICE_DEMO_TAP_PERIOD;
     c.beginPath();
     c.arc(pos.x, pos.y, r * (1 + t), 0, TAU);
     c.strokeStyle = 'rgba(255, 255, 255, ' + (1 - t) + ')';
@@ -10690,8 +10994,9 @@ function start() {
     c.stroke();
   }
   // スティック。土台・倒した向きの矢印・倒した頭
-  function drawDemoStick(aim, aimDir) {
+  function drawDemoStick(aim) {
     const c = demoCtx;
+    const aimDir = vec2(Math.cos(aim), Math.sin(aim));
     const base = CONFIG.CHOICE_DEMO_STICK_POS;
     c.beginPath();
     c.arc(base.x, base.y, CONFIG.CHOICE_DEMO_STICK_BASE, 0, TAU);
