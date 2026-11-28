@@ -220,6 +220,70 @@
   .stage-grid .title-choice { font-size: 14px; padding: 8px 12px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
   .stage-grid .title-choice.current { background: rgba(255, 255, 255, 0.18); }
   .stage-grid .back { border-color: var(--muted); color: var(--muted); }
+  /* 「キミはどっちで遊ぶ？」（v116）。メニュー（説明画面）より上に重ねる */
+  .choice-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    /* 後ろのメニューの文字が透けて読みにくかったので、塗りつぶす */
+    background: rgb(4, 19, 27);
+    color: var(--fg);
+    font-family: var(--font-hud);
+  }
+  .choice-screen[hidden], .choice-pick[hidden], .choice-explain[hidden] { display: none; }
+  /* 選ぶ画面。上半分と下半分がそのまま大きなボタン */
+  .choice-pick { position: absolute; inset: 0; display: flex; flex-direction: column; }
+  .choice-half {
+    flex: 1;
+    font: inherit;
+    font-size: clamp(28px, 8vmin, 72px);
+    background: rgba(255, 255, 255, 0.03);
+    border: none;
+    cursor: pointer;
+  }
+  .choice-half:hover { background: rgba(255, 255, 255, 0.12); }
+  .choice-half.top { color: var(--fish); border-bottom: 2px solid var(--goal); }
+  .choice-half.bottom { color: var(--goal); }
+  /* 真ん中の問いかけ。2つのボタンの境目に重ねる。押しても下のボタンに届くよう、触れない */
+  .choice-ask {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 10px 32px;
+    white-space: nowrap;
+    font-size: clamp(18px, 4.4vmin, 34px);
+    background: var(--bg);
+    border: 2px solid var(--goal);
+    border-radius: 999px;
+    pointer-events: none;
+  }
+  .choice-hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; color: var(--muted); font-size: 13px; pointer-events: none; }
+  /* 説明の画面。上に図、下に文、一番下にボタン */
+  .choice-explain {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3vmin;
+    padding: 16px 16px 36px;
+  }
+  /* 図は縦横比のまま、画面の幅と高さの半分ほどに収める */
+  .choice-demo { display: block; max-width: 92vw; max-height: 46vh; border: 2px solid var(--fish); border-radius: 12px; }
+  .choice-lines { text-align: center; font-size: clamp(18px, 4vmin, 32px); line-height: 1.6; }
+  .choice-ok {
+    font: inherit;
+    font-size: clamp(20px, 4.4vmin, 34px);
+    color: var(--goal);
+    background: rgba(255, 209, 102, 0.14);
+    border: 2px solid var(--goal);
+    border-radius: 999px;
+    padding: 10px 48px;
+    cursor: pointer;
+  }
+  .choice-ok:hover { background: rgba(255, 209, 102, 0.3); }
   /* プレイ中のステージセレクト（v104）。開いている間はゲームを止める */
   .stage-select {
     position: fixed;
@@ -464,6 +528,21 @@
     <div class="hint">数字キーで選ぶ ／ Esc で閉じて続きから</div>
   </div>
 </div>
+<!-- 「キミはどっちで遊ぶ？」（v116）。メニューでステージを選んだ後に毎回出す。文言は CHOICE_TEXT にまとめてある -->
+<div class="choice-screen" id="choiceScreen" hidden>
+  <div class="choice-pick" id="choicePick">
+    <button class="choice-half top" id="choiceMouse" type="button"></button>
+    <button class="choice-half bottom" id="choicePad" type="button"></button>
+    <div class="choice-ask" id="choiceAsk"></div>
+    <div class="choice-hint" id="choicePickHint"></div>
+  </div>
+  <div class="choice-explain" id="choiceExplain" hidden>
+    <canvas class="choice-demo" id="choiceDemo"></canvas>
+    <div class="choice-lines" id="choiceLines"></div>
+    <button class="choice-ok" id="choiceOk" type="button"></button>
+    <div class="choice-hint" id="choiceExplainHint"></div>
+  </div>
+</div>
 <div class="death-text" id="deathText" hidden></div>
 <div class="limit-callout" id="limitCallout" hidden></div>
 
@@ -589,6 +668,26 @@ function diagonal(startX, startY, count, gapX, gapY) {
   return list;
 }
 
+// 「キミはどっちで遊ぶ？」の画面の文言（v116）。文章を直す時はここだけ書き換える
+const CHOICE_TEXT = {
+  ask: 'キミはどっちで遊ぶ？',
+  mouse: 'マウスで遊ぶ！',
+  touch: '指で遊ぶ！',          // スマホ・タブレット（指で触る画面）では「マウス」の代わりにこれを出す
+  pad: 'ゲームパッドで遊ぶ！',
+  pickHint: 'パッドはどのボタンでも選べる　／　Esc でメニューへ',
+  explainHint: 'Esc（ゲームパッドは B）で選び直す',
+  lines: {
+    mouse: ['魚は勝手に進む！', 'マウスカーソルの方向に魚は向くぞ！', 'うまく制御して進め！'],
+    touch: ['魚は勝手に進む！', '指で触れている方向に魚は向くぞ！', '長押しして制御しよう！'],
+    pad: ['魚は勝手に進む！', 'スティックの方向に魚が向くぞ！', 'うまく制御して進め！'],
+  },
+  ok: {
+    mouse: 'OK!',
+    touch: 'OK!',
+    pad: 'Aボタンで開始！',
+  },
+};
+
 const CONFIG = {
   // ===== タイトルと設定 =====
   GAME_TITLE: '鮮度限界突破',  // ゲームの名前。メニューの見出しとタブの名前に使う
@@ -639,6 +738,41 @@ const CONFIG = {
                                 // 方向キー（INPUT_ALIGN_ANGLE_DEG）より厳しくして、急な曲がりでは加速が溜まらないようにする
   MOUSE_DEADZONE_RADIUS: 40,    // px。カーソルが魚の中心からこれより近い時は向きを変えない（真上にあると向きがぶれてくるくる回るため）
   SPIN_MOUSE_BUTTON: 2,         // 回転アタックを出すマウスのボタン。0 = 左クリック / 1 = ホイール押し込み / 2 = 右クリック
+  // ===== ゲームパッド（v116） =====
+  // ボタンの番号はブラウザの標準の並び（Xbox 型の並び。A=0, B=1, X=2, Y=3, LB=4, RB=5, BACK=8, START=9, 十字キー 12〜15）
+  PAD_DEADZONE: 0.25,           // 0〜1。スティックをこれより倒していない時は「倒していない」（まっすぐ進む・加速しない）。
+                                // 0 にすると、手を離していてもスティックのわずかなずれで曲がり続けるため
+  PAD_AXIS_X: 0,                // 左スティックの横の軸の番号（右がプラス）
+  PAD_AXIS_Y: 1,                // 左スティックの縦の軸の番号（下がプラス。画面の Y と同じ向き）
+  PAD_BUTTON_A: 0,              // 決める・始める（「どっちで遊ぶ？」の説明の画面）
+  PAD_BUTTON_CANCEL: 1,         // 戻る（説明の画面から選び直しへ）。B。回転と同じボタンだが、場面が違うので別に持つ
+  PAD_BUTTON_SPIN: 1,           // 回転アタック。B。押した瞬間に出す（右クリックと同じ）
+  PAD_BUTTON_DRIFT: 5,          // ドリフト。RB。押している間（左クリック・スペースと同じ）
+  PAD_BUTTON_BACK: 8,           // やり直し（R キーと同じ）
+  PAD_BUTTON_START: 9,          // ステージセレクトを開く・閉じる（Esc と同じ）
+  PAD_BUTTON_UP: 12,            // 十字キー。スティックの代わりに使える（斜めは2つ押し）
+  PAD_BUTTON_DOWN: 13,
+  PAD_BUTTON_LEFT: 14,
+  PAD_BUTTON_RIGHT: 15,
+  // ===== 「キミはどっちで遊ぶ？」の説明の図（v116） =====
+  CHOICE_BACK_KEY: 'Escape',    // 選ぶ画面ではメニューへ、説明の画面では選び直しへ戻るキー
+  CHOICE_DEMO_SIZE: vec2(960, 360), // px。図のキャンバスの大きさ（中の座標）。画面には縦横比のまま縮めて出す
+  CHOICE_DEMO_SPEED: 1.1,       // ラジアン/秒。カーソル（スティック）の向きが上下に揺れる速さ。上げると魚がせわしなく曲がる
+  CHOICE_DEMO_SWING_DEG: 60,    // 度。カーソル（スティック）の向きが真横から上下に振れる幅
+  CHOICE_DEMO_RADIUS: 170,      // px（図の座標）。魚の中心からカーソル（指）までの距離
+  CHOICE_DEMO_FISH_POS: vec2(480, 180), // px（図の座標）。マウス・指の図の魚の位置
+  CHOICE_DEMO_PAD_FISH_POS: vec2(600, 180), // px（図の座標）。ゲームパッドの図の魚の位置（左にスティックを置くので右に寄せる）
+  CHOICE_DEMO_FISH_SCALE: 0.75, // 魚の絵を、ゲームの中の大きさ（PLAYER_SPRITE_LENGTH）の何倍で描くか
+  CHOICE_DEMO_STICK_POS: vec2(190, 180), // px（図の座標）。スティックの土台の中心
+  CHOICE_DEMO_STICK_BASE: 92,   // px。スティックの土台の半径
+  CHOICE_DEMO_STICK_KNOB: 40,   // px。スティックの頭の半径
+  CHOICE_DEMO_STICK_TILT: 50,   // px。倒した時に頭が土台の中心から動く距離
+  CHOICE_DEMO_ARROW: 150,       // px。倒した向きの矢印の長さ（スティックの中心から）。土台（CHOICE_DEMO_STICK_BASE）より長くして外へはみ出させる
+  CHOICE_DEMO_BUBBLES: 26,      // 個。後ろへ流れる泡の数（魚が勝手に進んでいると見せるため）
+  CHOICE_DEMO_BUBBLE_SPEED: 260, // px/秒（図の座標）。泡が魚の向きと逆へ流れる速さ
+  CHOICE_DEMO_BUBBLE_SIZE: 4,   // px。泡の半径
+  CHOICE_DEMO_TAP_PERIOD: 1.2,  // 秒。指の図で、触れている所の波紋が広がる周期
+  CHOICE_DEMO_TAP_RADIUS: 34,   // px。指の図の、触れている所の丸の半径（波紋はこの2倍まで広がる）
   ROLL_VISUAL_RPS: 10,           // 回転/秒。きりもみの見た目の回る速さ。挙動には影響しない
   ROLL_BACK_DARKEN: 0.55,       // 倍。きりもみで裏側が見えている時の明るさ。1で変化なし
 
@@ -2182,8 +2316,8 @@ const SKETCH_B1 = {
   enemies: [[766, 246.4], [850.2, 243], [907.5, 242], [950, 243.8], [997.3, 257.3], [1044.7, 246.9], [1092, 264.6], [1146, 267.7], [1212, 255.2], [1278, 272.6], [1338, 445.6], [1259, 469.4], [1265, 551.9], [1434.4, 588.7], [1529.7, 576.4], [1628.2, 572.2], [1686.3, 563.8], [1750.3, 555.4], [1813.7, 557.9], [1883.6, 566.3], [1932.4, 566.3], [1958.5, 566.3], [1981.3, 566.3], [1997.3, 566.3], [2013.3, 566.3], [2031.8, 566.3], [2047, 566.3], [2066.3, 566.3], [2127.8, 571.4], [2234.4, 573]],
   // ウニ。urchinsWall は一番近い壁に張り付ける（体の半分が壁に埋まる）、urchinsFree はその場に浮かべる
   urchinsWall: [[1627.4, 552], [1887.8, 550.3], [1909.7, 550.3], [1932.4, 550.3], [1953.5, 550.3], [1976.2, 550.3], [1997.3, 550.3], [2018.3, 550.3], [2041, 550.3], [1883.6, 584], [1908, 584], [1919.8, 584], [1951.8, 584], [1977, 584], [2000.6, 584], [2022.5, 584], [2049.5, 584]],
-  // 最初のウニ（④の部屋）は v109 から浮かべる。絵では床から少し浮いた所に描かれているため
-  urchinsFree: [[1206.6, 271.2], [1512, 557], [1749.5, 570.5]],
+  // ④の部屋のウニ（絵の 1206.6, 271.2）は v116 で消した
+  urchinsFree: [[1512, 557], [1749.5, 570.5]],
   // 通路の真ん中の高さに一直線に並べる雑魚の範囲（enemies の番号、両端を含む）。⑧の連続で倒す所の 9 体（v109）
   centerRow: [19, 27],
   // ⑧の列と同じ高さにそろえるだけの雑魚（⑨の2匹。v110）。高さを決める平均には入れない
@@ -2191,6 +2325,12 @@ const SKETCH_B1 = {
   // ⑧からゴールまでの天井と床を真横にする（v111）。x が fromX 以上の点の高さを、上の壁は topY、下の壁は bottomY にそろえる（絵の座標）。
   // fromX は 1851：⑦から⑧に入る所の床の段差（x 1850.7 の点）を残すため
   straight: { fromX: 1851, topY: 543, bottomY: 592 },
+  // 道を差し込む（v116）。x が atX の所で道を切り開き、天井と床をその高さのまま真横に length だけ伸ばす（後ろは全部 length だけ右へ）。
+  // 758 は③の細い通路の天井が下がり切った所。最初の雑魚の手前に、細い通路を約 450px 足す
+  insert: { atX: 758, length: 40 },
+  // 消して詰める（v116）。fromX と toX の間の道（②のくねくね）を消し、toX から後ろを shift だけずらして①につなぐ。
+  // 上へ 27.5 ずらすのは、①の出口と③の入口の高さを合わせるため。どちらも絵の座標で、straight → insert → cut の順にかける
+  cut: { fromX: 460, toX: 705, shift: [-240, -27.5] },
   // v113：⑧の列の後ろの雑魚2匹とゴールは、間を 0.7 倍に詰めた（絵では雑魚 2154.1 / 2306.5、ゴール 2469.8）
   goal: [2348.8, 579.3],
 };
@@ -2240,6 +2380,20 @@ function wallStage(def, opts) {
   const runway = CONFIG.INTRO_SPEED * introTime + CONFIG.RUNWAY_WALL_MARGIN;
   // 地形は絵の線をそのまま拡大するだけ（v108）。押し広げや引き伸ばしはしない（形を絵のまま保つため）
   const step = CONFIG.SKETCH_B_RESAMPLE;
+  // 雑魚・ウニ・ゴールの点に、道と同じ insert と cut をかける（v116）。道の線は insertLine で先に insert をかけてあるので、cut だけの editPoint を使う
+  const editPoint = function (q) {
+    if (def.cut && q[0] >= def.cut.toX) {
+      return [q[0] + def.cut.shift[0], q[1] + def.cut.shift[1]];
+    }
+    return q;
+  };
+  const movePoint = function (q) {
+    let x = q[0];
+    if (def.insert && x >= def.insert.atX) {
+      x += def.insert.length;
+    }
+    return editPoint([x, q[1]]);
+  };
   // straight（v111）：区間の点の高さをそろえて、天井と床を真横の線にする
   const flatten = function (line, y) {
     if (!def.straight) {
@@ -2258,11 +2412,53 @@ function wallStage(def, opts) {
     topSrc = flatten(def.top, def.straight.topY);
     bottomSrc = flatten(def.bottom, def.straight.bottomY);
   }
+  // insert（v116）：atX で線を切り、その点の高さのまま length だけ横に伸ばす。atX より後ろの点は length だけ右へ
+  const insertLine = function (line) {
+    if (!def.insert) {
+      return line;
+    }
+    const at = def.insert.atX;
+    const out = [];
+    let opened = false;
+    for (let i = 0; i < line.length; i++) {
+      const q = line[i];
+      if (q[0] < at) {
+        out.push(q);
+        continue;
+      }
+      if (!opened && i > 0) {
+        const prev = line[i - 1];
+        const t = (at - prev[0]) / (q[0] - prev[0]);
+        const y = prev[1] + (q[1] - prev[1]) * t;
+        out.push([at, y]);
+        out.push([at + def.insert.length, y]);
+        opened = true;
+      }
+      out.push([q[0] + def.insert.length, q[1]]);
+    }
+    return out;
+  };
+  // cut（v116）：fromX と toX の間の点を消し、toX より後ろの点を shift だけずらす
+  const cutLine = function (line) {
+    if (!def.cut) {
+      return line;
+    }
+    const out = [];
+    for (const q of line) {
+      if (q[0] > def.cut.fromX && q[0] < def.cut.toX) {
+        continue;
+      }
+      out.push(editPoint(q));
+    }
+    return out;
+  };
+  topSrc = cutLine(insertLine(topSrc));
+  bottomSrc = cutLine(insertLine(bottomSrc));
   const top = resampleLine(topSrc.map(P), step);
   const bottom = resampleLine(bottomSrc.map(P), step);
 
   // ゴールの壁。⊗ から一番近い上下の壁の点を結ぶ線の上に、通路をふさぐ向きで立てる。両端は壁に GOAL_WALL_BURY だけ埋める
-  const goal = P(def.goal);
+  const goal = P(movePoint(def.goal));
   const gt = nearestOnLine(top, goal).point;
   const gb = nearestOnLine(bottom, goal).point;
   const across = Math.atan2(gt.y - gb.y, gt.x - gb.x);
@@ -2317,19 +2513,19 @@ function wallStage(def, opts) {
   // ウニ。壁に張り付けるものは、一番近い縁の点から水の側へ URCHIN_RADIUS × URCHIN_WALL_OUT だけ出す（0 で体の半分が埋まる）
   const urchins = [];
   for (const p of def.urchinsWall) {
-    const e = nearestWaterEdge(water, P(p));
+    const e = nearestWaterEdge(water, P(movePoint(p)));
     const out = CONFIG.URCHIN_RADIUS * CONFIG.URCHIN_WALL_OUT;
     urchins.push({ x: e.point.x + e.normal.x * out, y: e.point.y + e.normal.y * out, wallNormal: e.normal });
   }
   for (const p of def.urchinsFree) {
-    const q = P(p);
+    const q = P(movePoint(p));
     urchins.push({ x: q.x, y: q.y, wallNormal: null });
   }
 
   // 雑魚。細い所（③の通路など）で、雑魚の体が壁にめり込む位置に描かれているものは、その場所の上下の壁の真ん中へ寄せる。
   // 絵の × は通路の真ん中のつもりで描かれていて、通路が雑魚とほぼ同じ太さなので、少しのずれでもめり込んで見えるため（v108）
   const enemies = def.enemies.map(function (p) {
-    const q = P(p);
+    const q = P(movePoint(p));
     if (nearestWaterEdge(water, q).dist >= CONFIG.ENEMY_RADIUS) {
       return q;
     }
@@ -2584,7 +2780,7 @@ const STAGES_NORMAL = [
 ];
 // 新ステージ組（v106）。今はステージ1だけ。回転アタックとドリフトは使えない（ボスを倒すごとに解放していく予定）
 // 制限時間は、何も倒さないボットのタイム（SKETCH_B1_BOT_TIME）の SKETCH_B_TIME_RATE 倍。ほかのステージ（約1.5倍）よりかなりゆるい
-const SKETCH_B1_BOT_TIME = 33.9; // 秒。何も倒さないボットがゴールの壁を突き破るまでのタイム（v113 でゴールを手前に寄せて測り直し。v108 は 35.4）。制限時間は 33.9 × 2.5 = 84.75 秒
+const SKETCH_B1_BOT_TIME = 31.2; // 秒。何も倒さないボットがゴールの壁を突き破るまでのタイム（v116 で②を消して測り直し。v113 は 33.9）。制限時間は 31.2 × 2.5 = 78 秒
 const STAGES_FRESH = [
   wallStage(SKETCH_B1, { label: 'STAGE 1', timeLimit: SKETCH_B1_BOT_TIME * CONFIG.SKETCH_B_TIME_RATE, abilities: { spin: false, drift: false } }),
 ];
@@ -3540,6 +3736,10 @@ function createGame() {
 
   // ---------- 入力 ----------
   function inputVector() {
+    // ゲームパッドのスティック（v116）。倒している間はその向きを入力にする（方向キーと同じ扱い。倒した量は向きだけに使う）
+    if (state.stick) {
+      return vec2(state.stick.x, state.stick.y);
+    }
     let x = 0;
     let y = 0;
     for (const dir in state.heldDirs) {
@@ -3631,6 +3831,11 @@ function createGame() {
     if (!mouse.known) {
       return null;
     }
+    // ゲームパッドで遊んでいる時（v116）はマウスの位置を使わない。置いたままのマウスにつられて曲がらないように。
+    // スティックを倒していない時は、ここで null になって、まっすぐ進む（加速もしない）
+    if (state.inputMode === 'pad') {
+      return null;
+    }
     const fish = state.fish;
     const dx = mouse.target.x - fish.pos.x;
     const dy = mouse.target.y - fish.pos.y;
@@ -3638,6 +3843,16 @@ function createGame() {
       return null;
     }
     return { angle: Math.atan2(dy, dx), alignRad: CONFIG.MOUSE_ALIGN_ANGLE_DEG * DEG };
+  }
+
+  // ゲームパッドのスティックの向き（v116）。PAD_DEADZONE より倒していない時は null を渡す
+  function setStick(dir) {
+    state.stick = dir;
+  }
+
+  // 遊び方（v116）。'mouse'・'touch'・'pad'。「どっちで遊ぶ？」の画面で選んだもの
+  function setInputMode(mode) {
+    state.inputMode = mode;
   }
 
   // カーソルの位置（ステージの座標）。描画側がカメラから計算して毎フレーム渡す
@@ -3706,6 +3921,29 @@ function createGame() {
     }
   }
 
+  // ゲームパッドのボタンを押した瞬間（v116）。action は 'spin'（B）か 'drift'（RB）。受け付ける時はマウスのボタンと同じ
+  function padDown(action) {
+    if (state.title || state.paused) {
+      return;
+    }
+    if (state.intro) {
+      return;
+    }
+    if (action === 'drift') {
+      pressDriftInput('pad');
+    }
+    if (action === 'spin') {
+      startSpin('normal', false);
+    }
+  }
+
+  // ゲームパッドのボタンを離した瞬間（v116）。ドリフトは離した時に放つ。離すのはいつでも受ける（止めている間に離しても押したままにならないように）
+  function padUp(action) {
+    if (action === 'drift') {
+      releaseDriftInput('pad');
+    }
+  }
+
   // ドリフトの入力（'key' か 'mouse'）を押した。まだドリフトしていなければ始める
   function pressDriftInput(source) {
     state.driftInputs[source] = true;
@@ -3719,6 +3957,10 @@ function createGame() {
       return;
     }
     if (state.driftInputs.mouse) {
+      return;
+    }
+    // ゲームパッドの RB（v116）
+    if (state.driftInputs.pad) {
       return;
     }
     releaseDrift();
@@ -3801,7 +4043,7 @@ function createGame() {
 
   // ドリフトの入力（キーかマウス）を押したままなら、ドリフトを始める。クールタイムが明けた時に使う
   function startDriftIfHeld() {
-    if (state.driftInputs.key || state.driftInputs.mouse) {
+    if (state.driftInputs.key || state.driftInputs.mouse || state.driftInputs.pad) {
       startDrift();
     }
   }
@@ -6928,8 +7170,12 @@ function createGame() {
     known: false,              // カーソルの位置を一度でも受け取ったか。受け取るまでは向きを変えない
     target: vec2(0, 0),        // カーソルの位置（ステージの座標）。描画側が毎フレーム教える
   };
-  // ドリフトを押している入力。スペースと左ボタンのどちらでも押せる。両方離した時に「離した」とする
-  state.driftInputs = { key: false, mouse: false };
+  // ドリフトを押している入力。スペース・左ボタン・ゲームパッドの RB のどれでも押せる。全部離した時に「離した」とする
+  state.driftInputs = { key: false, mouse: false, pad: false };
+  // ゲームパッドのスティックの向き（v116）。倒していない時は null。やり直しをまたいでも倒したままなら効くように reset の外で持つ
+  state.stick = null;
+  // 遊び方（v116）。'mouse'・'touch'・'pad'。最初はマウス（今までと同じ）
+  state.inputMode = 'mouse';
   state.viewSize = vec2(1280, 720); // 画面に映る範囲（ステージの単位）。風切りの線を出す範囲。描画側が毎フレーム教える
   state.transition = null;     // ステージのつなぎの帯の進み具合。null ならつないでいない
   state.introPaused = false;   // true の間はスタート演出を止めておく（帯が開くのを待つ）
@@ -6953,6 +7199,10 @@ function createGame() {
     mouseDown: mouseDown,
     mouseUp: mouseUp,
     setMouseTarget: setMouseTarget,
+    setStick: setStick,
+    padDown: padDown,
+    padUp: padUp,
+    setInputMode: setInputMode,
     totalSpeed: totalSpeed,
     rawSpeed: rawSpeed,
     warnProgress: warnProgress,
@@ -10117,7 +10367,12 @@ function createRenderer(game, canvas) {
     }
   }
 
-  return { render: render, resize: resize, screenToWorld: screenToWorld };
+  // 魚の絵（v116）。「どっちで遊ぶ？」の説明の図にも同じ絵を使うため。読み込み前は null
+  function fishImage() {
+    return sprites.fish;
+  }
+
+  return { render: render, resize: resize, screenToWorld: screenToWorld, fishImage: fishImage };
 }
 
 // ============================================================
@@ -10195,10 +10450,405 @@ function start() {
   titleScreen.style.background = 'rgba(4, 19, 27, ' + CONFIG.TITLE_DIM + ')';
   titleStart.style.animationDuration = CONFIG.TITLE_BLINK_PERIOD + 's';
   // setName はステージの組（'normal' / 'gimmick' / 'boss'）、index はその組の何番目から始めるか
+  // v116：すぐには始めず、先に「キミはどっちで遊ぶ？」を出す。始めるのは説明の画面で OK（A）を押した時（startChosen）
   function closeTitle(setName, index) {
+    openChoice(setName, index);
+  }
+  // 選んだ遊び方でステージを始める
+  function startChosen(setName, index, mode) {
+    game.setInputMode(mode);
     game.startFromTitle(setName, index);
     titleScreen.hidden = true;
     updateCursorRing();
+  }
+
+  // ===== 「キミはどっちで遊ぶ？」（v116） =====
+  // 1枚目（pick）で遊び方を選び、2枚目（explain）で動かし方の図と説明を見てから始める。
+  // メニューでステージを選んだ時だけ出す（やり直し・次のステージ・プレイ中のステージセレクトでは出さない）
+  const choiceScreen = document.getElementById('choiceScreen');
+  const choicePick = document.getElementById('choicePick');
+  const choiceExplain = document.getElementById('choiceExplain');
+  const choiceMouse = document.getElementById('choiceMouse');
+  const choicePad = document.getElementById('choicePad');
+  const choiceLines = document.getElementById('choiceLines');
+  const choiceOk = document.getElementById('choiceOk');
+  const choiceDemo = document.getElementById('choiceDemo');
+  const demoCtx = choiceDemo.getContext('2d');
+  choiceDemo.width = CONFIG.CHOICE_DEMO_SIZE.x;
+  choiceDemo.height = CONFIG.CHOICE_DEMO_SIZE.y;
+  document.getElementById('choiceAsk').textContent = CHOICE_TEXT.ask;
+  document.getElementById('choicePickHint').textContent = CHOICE_TEXT.pickHint;
+  document.getElementById('choiceExplainHint').textContent = CHOICE_TEXT.explainHint;
+  choicePad.textContent = CHOICE_TEXT.pad;
+  // 指で触る画面（スマホ・タブレット）か。マウスのような細かい指し方ができない端末を「指」とみなす
+  const fingerQuery = window.matchMedia('(pointer: coarse)');
+  // 図の色。ゲームの絵と同じ CSS の色を使う
+  const rootStyle = getComputedStyle(document.documentElement);
+  function cssColor(name) {
+    return rootStyle.getPropertyValue(name).trim();
+  }
+  const demoColors = {
+    waterTop: cssColor('--water-top'),
+    waterMid: cssColor('--water-mid'),
+    waterBottom: cssColor('--water-bottom'),
+    fish: cssColor('--fish'),
+    flash: cssColor('--flash'),
+    outline: cssColor('--cursor-outline'),
+    goal: cssColor('--goal'),
+    fg: cssColor('--fg'),
+    bg: cssColor('--bg'),
+  };
+  // open：出しているか。step：'pick'（選ぶ）か 'explain'（説明）。mode：選んだ遊び方。
+  // setName / index：メニューで選んだステージ。time・fishAngle・bubbles：説明の図の動き
+  const choice = { open: false, step: 'pick', mode: 'mouse', setName: null, index: 0, time: 0, fishAngle: 0, bubbles: [] };
+  function isFingerDevice() {
+    return fingerQuery.matches;
+  }
+  function openChoice(setName, index) {
+    choice.setName = setName;
+    choice.index = index;
+    choice.open = true;
+    if (isFingerDevice()) {
+      choiceMouse.textContent = CHOICE_TEXT.touch;
+    } else {
+      choiceMouse.textContent = CHOICE_TEXT.mouse;
+    }
+    showChoicePick();
+    choiceScreen.hidden = false;
+  }
+  function closeChoice() {
+    choice.open = false;
+    choiceScreen.hidden = true;
+  }
+  function showChoicePick() {
+    choice.step = 'pick';
+    choicePick.hidden = false;
+    choiceExplain.hidden = true;
+  }
+  function showChoiceExplain(mode) {
+    choice.step = 'explain';
+    choice.mode = mode;
+    choiceLines.innerHTML = '';
+    for (const line of CHOICE_TEXT.lines[mode]) {
+      const div = document.createElement('div');
+      div.textContent = line;
+      choiceLines.appendChild(div);
+    }
+    choiceOk.textContent = CHOICE_TEXT.ok[mode];
+    // 図は毎回まっすぐ右を向いたところから始める
+    choice.time = 0;
+    choice.fishAngle = 0;
+    choice.bubbles = [];
+    for (let i = 0; i < CONFIG.CHOICE_DEMO_BUBBLES; i++) {
+      choice.bubbles.push(vec2(Math.random() * CONFIG.CHOICE_DEMO_SIZE.x, Math.random() * CONFIG.CHOICE_DEMO_SIZE.y));
+    }
+    choicePick.hidden = true;
+    choiceExplain.hidden = false;
+    drawChoiceDemo(0);
+  }
+  function confirmChoice() {
+    closeChoice();
+    startChosen(choice.setName, choice.index, choice.mode);
+  }
+  // 上半分（マウス・指）。指で押した時と、指で触る端末では「指」にする
+  choiceMouse.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    let mode = 'mouse';
+    if (isFingerDevice() || e.pointerType === 'touch' || e.pointerType === 'pen') {
+      mode = 'touch';
+    }
+    showChoiceExplain(mode);
+  });
+  onPress(choicePad, function () { showChoiceExplain('pad'); });
+  onPress(choiceOk, confirmChoice);
+  // 画面のどこを押しても、後ろのメニューやキャンバスに届かないようにする
+  choiceScreen.addEventListener('pointerdown', function (e) {
+    e.stopPropagation();
+  });
+  choiceScreen.addEventListener('mousedown', function (e) {
+    e.stopPropagation();
+  });
+  choiceScreen.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+  });
+  // Esc：選ぶ画面ならメニュー（ステージの一覧）へ、説明の画面なら選ぶ画面へ
+  function backFromChoice() {
+    if (choice.step === 'explain') {
+      showChoicePick();
+      return;
+    }
+    closeChoice();
+  }
+
+  // 説明の図。ゲームと同じ魚の絵が、ゲームと同じ曲がる速さ（TURN_RATE_DEG）でカーソル・指・スティックの向きへ向く。
+  // 泡を魚の向きと逆へ流して、魚が勝手に進んでいるように見せる
+  function drawChoiceDemo(dt) {
+    const size = CONFIG.CHOICE_DEMO_SIZE;
+    choice.time += dt;
+    const aim = CONFIG.CHOICE_DEMO_SWING_DEG * DEG * Math.sin(choice.time * CONFIG.CHOICE_DEMO_SPEED);
+    const maxTurn = CONFIG.TURN_RATE_DEG * DEG * dt;
+    choice.fishAngle += clamp(angleDiff(aim, choice.fishAngle), -maxTurn, maxTurn);
+    const head = vec2(Math.cos(choice.fishAngle), Math.sin(choice.fishAngle));
+    const aimDir = vec2(Math.cos(aim), Math.sin(aim));
+    const c = demoCtx;
+    // 水。ゲームの背景と同じ、上下が濃く真ん中が明るいグラデーション
+    const grad = c.createLinearGradient(0, 0, 0, size.y);
+    grad.addColorStop(0, demoColors.waterTop);
+    grad.addColorStop(0.5, demoColors.waterMid);
+    grad.addColorStop(1, demoColors.waterBottom);
+    c.fillStyle = grad;
+    c.fillRect(0, 0, size.x, size.y);
+    // 泡。画面の外に出たら反対側から戻す
+    c.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    for (const b of choice.bubbles) {
+      b.x = (b.x - head.x * CONFIG.CHOICE_DEMO_BUBBLE_SPEED * dt + size.x) % size.x;
+      b.y = (b.y - head.y * CONFIG.CHOICE_DEMO_BUBBLE_SPEED * dt + size.y) % size.y;
+      c.beginPath();
+      c.arc(b.x, b.y, CONFIG.CHOICE_DEMO_BUBBLE_SIZE, 0, TAU);
+      c.fill();
+    }
+    let fishPos = CONFIG.CHOICE_DEMO_FISH_POS;
+    if (choice.mode === 'pad') {
+      fishPos = CONFIG.CHOICE_DEMO_PAD_FISH_POS;
+      drawDemoStick(aim, aimDir);
+    }
+    // 魚から向かう先への点線。マウス・指は向かう先まで、ゲームパッドは倒した向きへ同じ長さ
+    const target = vec2(fishPos.x + aimDir.x * CONFIG.CHOICE_DEMO_RADIUS, fishPos.y + aimDir.y * CONFIG.CHOICE_DEMO_RADIUS);
+    c.save();
+    c.setLineDash([10, 10]);
+    c.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(fishPos.x, fishPos.y);
+    c.lineTo(target.x, target.y);
+    c.stroke();
+    c.restore();
+    drawDemoFish(fishPos, choice.fishAngle);
+    if (choice.mode === 'mouse') {
+      drawDemoCursor(target);
+    }
+    if (choice.mode === 'touch') {
+      drawDemoFinger(target);
+    }
+  }
+  function drawDemoFish(pos, angle) {
+    const c = demoCtx;
+    const scale = CONFIG.CHOICE_DEMO_FISH_SCALE;
+    c.save();
+    c.translate(pos.x, pos.y);
+    c.rotate(angle);
+    const img = renderer.fishImage();
+    if (img === null) {
+      // 絵の読み込みが終わるまでは、ゲームと同じ三角の形で描く
+      const r = CONFIG.FISH_RADIUS * scale;
+      c.fillStyle = demoColors.fish;
+      c.beginPath();
+      c.moveTo(r * 1.4, 0);
+      c.lineTo(-r, r * 0.8);
+      c.lineTo(-r * 0.4, 0);
+      c.lineTo(-r, -r * 0.8);
+      c.closePath();
+      c.fill();
+      c.restore();
+      return;
+    }
+    const len = CONFIG.PLAYER_SPRITE_LENGTH * scale;
+    const h = len * img.height / img.width;
+    const off = CONFIG.PLAYER_SPRITE_OFFSET;
+    c.drawImage(img, off.x * scale - len / 2, off.y * scale - h / 2, len, h);
+    c.restore();
+  }
+  // ゲームの中のカーソルの輪と同じ見た目（白い輪に濃いふち）
+  function drawDemoCursor(pos) {
+    const c = demoCtx;
+    c.beginPath();
+    c.arc(pos.x, pos.y, CONFIG.CURSOR_RADIUS, 0, TAU);
+    c.strokeStyle = demoColors.outline;
+    c.lineWidth = CONFIG.CURSOR_LINE_WIDTH + CONFIG.CURSOR_OUTLINE * 2;
+    c.stroke();
+    c.strokeStyle = demoColors.flash;
+    c.lineWidth = CONFIG.CURSOR_LINE_WIDTH;
+    c.stroke();
+  }
+  // 指で触れている所。丸と、そこから広がる波紋（押し続けていると分かるように）
+  function drawDemoFinger(pos) {
+    const c = demoCtx;
+    const r = CONFIG.CHOICE_DEMO_TAP_RADIUS;
+    const t = (choice.time % CONFIG.CHOICE_DEMO_TAP_PERIOD) / CONFIG.CHOICE_DEMO_TAP_PERIOD;
+    c.beginPath();
+    c.arc(pos.x, pos.y, r * (1 + t), 0, TAU);
+    c.strokeStyle = 'rgba(255, 255, 255, ' + (1 - t) + ')';
+    c.lineWidth = 4;
+    c.stroke();
+    c.beginPath();
+    c.arc(pos.x, pos.y, r, 0, TAU);
+    c.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    c.fill();
+    c.strokeStyle = demoColors.outline;
+    c.lineWidth = 3;
+    c.stroke();
+  }
+  // スティック。土台・倒した向きの矢印・倒した頭
+  function drawDemoStick(aim, aimDir) {
+    const c = demoCtx;
+    const base = CONFIG.CHOICE_DEMO_STICK_POS;
+    c.beginPath();
+    c.arc(base.x, base.y, CONFIG.CHOICE_DEMO_STICK_BASE, 0, TAU);
+    c.fillStyle = 'rgba(6, 36, 72, 0.55)';
+    c.fill();
+    c.strokeStyle = demoColors.fg;
+    c.lineWidth = 3;
+    c.stroke();
+    const knob = vec2(base.x + aimDir.x * CONFIG.CHOICE_DEMO_STICK_TILT, base.y + aimDir.y * CONFIG.CHOICE_DEMO_STICK_TILT);
+    c.beginPath();
+    c.arc(knob.x, knob.y, CONFIG.CHOICE_DEMO_STICK_KNOB, 0, TAU);
+    c.fillStyle = demoColors.bg;
+    c.fill();
+    c.strokeStyle = demoColors.fg;
+    c.lineWidth = 3;
+    c.stroke();
+    // 矢印は頭の上に重ねる（頭の下だと隠れて、どっちへ倒しているか見えなかったため）
+    drawDemoArrow(base, aim, CONFIG.CHOICE_DEMO_ARROW, demoColors.goal);
+  }
+  function drawDemoArrow(from, angle, length, color) {
+    const c = demoCtx;
+    c.save();
+    c.translate(from.x, from.y);
+    c.rotate(angle);
+    c.strokeStyle = demoColors.outline;
+    c.fillStyle = color;
+    c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(0, -7);
+    c.lineTo(length - 26, -7);
+    c.lineTo(length - 26, -18);
+    c.lineTo(length, 0);
+    c.lineTo(length - 26, 18);
+    c.lineTo(length - 26, 7);
+    c.lineTo(0, 7);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.restore();
+  }
+
+  // ===== ゲームパッド（v116） =====
+  // 毎フレーム navigator.getGamepads() を読み、押した瞬間・離した瞬間を前のフレームとの差で見つける
+  const padState = { prev: [] };
+  function readPad() {
+    if (!navigator.getGamepads) {
+      return null;
+    }
+    for (const pad of navigator.getGamepads()) {
+      if (pad && pad.connected) {
+        return pad;
+      }
+    }
+    return null;
+  }
+  // スティックの向き。PAD_DEADZONE より倒していなければ十字キー、それも押していなければ null（まっすぐ進む）
+  function padStick(pad, now) {
+    let ax = 0;
+    let ay = 0;
+    if (pad.axes.length > CONFIG.PAD_AXIS_Y) {
+      ax = pad.axes[CONFIG.PAD_AXIS_X];
+      ay = pad.axes[CONFIG.PAD_AXIS_Y];
+    }
+    if (Math.hypot(ax, ay) > CONFIG.PAD_DEADZONE) {
+      return vec2(ax, ay);
+    }
+    let dx = 0;
+    let dy = 0;
+    if (now[CONFIG.PAD_BUTTON_RIGHT]) {
+      dx += 1;
+    }
+    if (now[CONFIG.PAD_BUTTON_LEFT]) {
+      dx -= 1;
+    }
+    if (now[CONFIG.PAD_BUTTON_DOWN]) {
+      dy += 1;
+    }
+    if (now[CONFIG.PAD_BUTTON_UP]) {
+      dy -= 1;
+    }
+    if (dx === 0 && dy === 0) {
+      return null;
+    }
+    return vec2(dx, dy);
+  }
+  function pollPad() {
+    const pad = readPad();
+    if (pad === null) {
+      // 抜いた時は、押していたドリフトを離したことにする（押したままにならないように）
+      if (padState.prev[CONFIG.PAD_BUTTON_DRIFT]) {
+        game.padUp('drift');
+      }
+      padState.prev = [];
+      game.setStick(null);
+      return;
+    }
+    const now = [];
+    for (const b of pad.buttons) {
+      now.push(b.pressed);
+    }
+    const prev = padState.prev;
+    padState.prev = now;
+    function pressed(i) {
+      return Boolean(now[i]) && !prev[i];
+    }
+    if (prev[CONFIG.PAD_BUTTON_DRIFT] && !now[CONFIG.PAD_BUTTON_DRIFT]) {
+      game.padUp('drift');
+    }
+    if (choice.open) {
+      game.setStick(null);
+      if (choice.step === 'pick') {
+        // どのボタンでも「ゲームパッドで遊ぶ」
+        for (let i = 0; i < now.length; i++) {
+          if (pressed(i)) {
+            showChoiceExplain('pad');
+            return;
+          }
+        }
+        return;
+      }
+      if (pressed(CONFIG.PAD_BUTTON_A)) {
+        confirmChoice();
+        return;
+      }
+      if (pressed(CONFIG.PAD_BUTTON_CANCEL)) {
+        showChoicePick();
+      }
+      return;
+    }
+    // ゲームパッドで遊ぶと選んだ時だけ、ゲームを動かす（マウスで遊んでいる時に置いてあるパッドで曲がらないように）
+    if (game.state.inputMode !== 'pad') {
+      game.setStick(null);
+      return;
+    }
+    game.setStick(padStick(pad, now));
+    if (game.state.title) {
+      return;
+    }
+    if (!stageSelect.hidden) {
+      if (pressed(CONFIG.PAD_BUTTON_START)) {
+        closeSelect();
+      }
+      return;
+    }
+    if (pressed(CONFIG.PAD_BUTTON_START)) {
+      openSelect();
+      return;
+    }
+    if (pressed(CONFIG.PAD_BUTTON_BACK)) {
+      game.restart();
+    }
+    if (pressed(CONFIG.PAD_BUTTON_SPIN)) {
+      game.padDown('spin');
+    }
+    if (pressed(CONFIG.PAD_BUTTON_DRIFT)) {
+      game.padDown('drift');
+    }
   }
 
   // ===== ステージセレクト（v104） =====
@@ -10342,8 +10992,9 @@ function start() {
   // 輪の場所と、出すかどうか。マウスの位置（mouseScreen）は下の pointermove で更新する
   const cursorState = { x: 0, y: 0, known: false, held: false };
   function updateCursorRing() {
-    // 出すのは、遊んでいる間（メニューではない）・設定が ON・マウスを一度でも動かした時だけ
-    const show = SETTINGS.cursor && cursorState.known && !game.state.title && stageSelect.hidden;
+    // 出すのは、遊んでいる間（メニューではない）・設定が ON・マウスを一度でも動かした時だけ。
+    // ゲームパッドで遊んでいる時（v116）は、マウスで向きが変わらないので出さない
+    const show = SETTINGS.cursor && cursorState.known && !game.state.title && stageSelect.hidden && game.state.inputMode !== 'pad';
     cursorRing.hidden = !show;
     canvas.classList.toggle('hide-cursor', show);
     if (!show) {
@@ -10487,6 +11138,17 @@ function start() {
     if (e.target instanceof HTMLInputElement) {
       return;
     }
+    // 「どっちで遊ぶ？」（v116）を出している間は、戻るキーだけ受ける（後ろのメニューやゲームに渡さない）
+    if (choice.open) {
+      if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key)) {
+        return;
+      }
+      e.preventDefault();
+      if (e.code === CONFIG.CHOICE_BACK_KEY) {
+        backFromChoice();
+      }
+      return;
+    }
     if (game.state.title) {
       // Ctrl / Cmd / Alt 付きと F キーはブラウザの操作（再読み込みなど）なので、止めずに通す
       if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key)) {
@@ -10550,6 +11212,11 @@ function start() {
     if (e.pointerType !== 'mouse') {
       return;
     }
+    // 「指で遊ぶ」（v116）の時は、マウスの動きを向きにも輪にも使わない。
+    // スマホでブラウザがまねて送ってくるマウスの動き（画面の左上 0,0 など）で、魚がそっちへ曲がってしまうため
+    if (game.state.inputMode === 'touch') {
+      return;
+    }
     // 袋を振りほどく判定に、前回からの横の動きを渡す
     if (mouseScreen.known) {
       game.mouseShake(e.clientX - mouseScreen.x);
@@ -10610,7 +11277,7 @@ function start() {
     if (e.pointerType === 'mouse') {
       return;
     }
-    if (e.target.closest('button, .title-screen, .stage-select')) {
+    if (e.target.closest('button, .title-screen, .stage-select, .choice-screen')) {
       return;
     }
     e.preventDefault();
@@ -10703,9 +11370,9 @@ function start() {
     }
     return true;
   }
-  // ボタンを出すか。指で触ったことがあり、ゲームの画面で（メニューとステージセレクトの間は出さない）、使える時だけ
+  // ボタンを出すか。「指で遊ぶ」を選んでいて（v116）、ゲームの画面で（メニューとステージセレクトの間は出さない）、使える時だけ
   function updateTouchButtons(s) {
-    const playing = touchState.used && !s.title && stageSelect.hidden;
+    const playing = s.inputMode === 'touch' && !s.title && stageSelect.hidden;
     touchSpin.hidden = !(playing && touchAbility('spin'));
     touchDrift.hidden = !(playing && touchAbility('drift'));
   }
@@ -10731,7 +11398,7 @@ function start() {
     }
     titleScreen.hidden = !s.title;
     // メニューに戻った時は輪を消し、ふつうの矢印に戻す（その時の状態に合わせ直すだけなので毎フレームでも軽い）
-    if (cursorRing.hidden !== !(SETTINGS.cursor && cursorState.known && !s.title && stageSelect.hidden)) {
+    if (cursorRing.hidden !== !(SETTINGS.cursor && cursorState.known && !s.title && stageSelect.hidden && s.inputMode !== 'pad')) {
       updateCursorRing();
     }
     hudTime.textContent = s.gameTime.toFixed(2);
@@ -10869,6 +11536,10 @@ function start() {
     if (mouseScreen.known) {
       const target = renderer.screenToWorld(mouseScreen.x, mouseScreen.y);
       game.setMouseTarget(target.x, target.y);
+    }
+    pollPad();
+    if (choice.open && choice.step === 'explain') {
+      drawChoiceDemo(dt);
     }
     game.update(dt);
     renderer.render();
